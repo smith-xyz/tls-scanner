@@ -1,4 +1,4 @@
-module github.com/richardsonnick/tls-scanner
+module github.com/openshift/tls-scanner
 
 go 1.24.0
 

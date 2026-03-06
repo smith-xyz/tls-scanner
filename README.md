@@ -1,6 +1,6 @@
 # tls-scanner
 
-A network security scanner for OpenShift/Kubernetes clusters that combines nmap port scanning with SSL/TLS cipher enumeration and OpenShift component analysis.
+A TLS compliance scanner for OpenShift/Kubernetes clusters. Uses [testssl.sh](https://testssl.sh/) to enumerate TLS versions, cipher suites, and key exchange groups across cluster pods, with post-quantum (ML-KEM) readiness checks.
 
 ## Prerequisites
 
@@ -84,37 +84,37 @@ Use `JOB_TEMPLATE_FILE` to point at a job template that sets `spec.hostNetwork: 
 
 The scanner produces a CSV file with detailed information about each scanned port. Key columns include:
 
-| Column | Description |
-|--------|-------------|
-| IP | Pod IP address that was scanned |
-| Port | TCP port number |
-| Protocol | Protocol (typically "tcp") |
-| Service | Detected service (e.g., "https", "http") |
-| Pod Name | Kubernetes pod name |
-| Namespace | Kubernetes namespace |
-| Component Name | OpenShift component name extracted from image |
-| Process | Process name listening on the port (from lsof) |
-| TLS Ciphers | Detected TLS cipher suites |
-| TLS Version | Detected TLS versions (e.g., TLSv1.2, TLSv1.3) |
-| **Status** | Categorized scan result (see below) |
-| **Reason** | Detailed explanation of the status |
-| **Listen Address** | Address the port is bound to (e.g., 127.0.0.1, *, 0.0.0.0) |
+| Column             | Description                                                 |
+| ------------------ | ----------------------------------------------------------- |
+| IP                 | Pod IP address that was scanned                             |
+| Port               | TCP port number                                             |
+| Protocol           | Protocol (typically "tcp")                                  |
+| Service            | Detected service (e.g., "https", "http")                    |
+| Pod Name           | Kubernetes pod name                                         |
+| Namespace          | Kubernetes namespace                                        |
+| Component Name     | OpenShift component name extracted from image               |
+| Process            | Process name listening on the port (from lsof)              |
+| TLS Ciphers        | Detected TLS cipher suites                                  |
+| TLS Version        | Detected TLS versions (e.g., TLSv1.2, TLSv1.3)              |
+| **Status**         | Categorized scan result (see below)                         |
+| **Reason**         | Detailed explanation of the status                          |
+| **Listen Address** | Address the port is bound to (e.g., 127.0.0.1, \*, 0.0.0.0) |
 
 ### Status Categories
 
 The `Status` column categorizes why a port couldn't be scanned or its TLS configuration:
 
-| Status | Description |
-|--------|-------------|
-| `OK` | TLS scan successful - cipher and version information available |
-| `NO_TLS` | Port is open but not using TLS (plain HTTP/TCP service) |
-| `LOCALHOST_ONLY` | Port is bound to 127.0.0.1, not accessible from pod IP |
-| `FILTERED` | Port blocked by network policy or firewall |
-| `CLOSED` | Port not listening on the scanned IP address |
-| `MTLS_REQUIRED` | TLS handshake failed - likely requires client certificate |
-| `TIMEOUT` | Connection timed out |
-| `NO_PORTS` | Pod declares no TCP ports in its spec |
-| `ERROR` | Scan error occurred (see Reason for details) |
+| Status           | Description                                                    |
+| ---------------- | -------------------------------------------------------------- |
+| `OK`             | TLS scan successful - cipher and version information available |
+| `NO_TLS`         | Port is open but not using TLS (plain HTTP/TCP service)        |
+| `LOCALHOST_ONLY` | Port is bound to 127.0.0.1, not accessible from pod IP         |
+| `FILTERED`       | Port blocked by network policy or firewall                     |
+| `CLOSED`         | Port not listening on the scanned IP address                   |
+| `MTLS_REQUIRED`  | TLS handshake failed - likely requires client certificate      |
+| `TIMEOUT`        | Connection timed out                                           |
+| `NO_PORTS`       | Pod declares no TCP ports in its spec                          |
+| `ERROR`          | Scan error occurred (see Reason for details)                   |
 
 ### Example Output
 
@@ -156,11 +156,11 @@ You can also run the steps manually.
 
 ### `deploy.sh` Script Actions
 
--   `build`: Builds the `tls-scanner` binary and container image.
--   `push`: Pushes the container image to the registry specified by `$SCANNER_IMAGE`.
--   `deploy`: Deploys the scanner Kubernetes Job to the cluster specified by `$KUBECONFIG` and `$NAMESPACE`.
--   `cleanup`: Removes the scanner Job and RBAC resources.
--   `full-deploy` (or no action): Runs `build`, `push`, and `deploy`.
+- `build`: Builds the `tls-scanner` binary and container image.
+- `push`: Pushes the container image to the registry specified by `$SCANNER_IMAGE`.
+- `deploy`: Deploys the scanner Kubernetes Job to the cluster specified by `$KUBECONFIG` and `$NAMESPACE`.
+- `cleanup`: Removes the scanner Job and RBAC resources.
+- `full-deploy` (or no action): Runs `build`, `push`, and `deploy`.
 
 ### Command Line Options
 
@@ -171,13 +171,20 @@ The scanner binary accepts the following command-line options. These are configu
 ```
 
 **Options:**
+
 - `-host <ip>` - Target host/IP to scan (default: 127.0.0.1)
-- `-port <port>` - Target port to scan (default: 443)  
+- `-port <port>` - Target port to scan (default: 443)
+- `-targets <host:port,...>` - Comma-separated list of host:port targets to scan
 - `-all-pods` - Scan all pods in the cluster (requires cluster access)
 - `-component-filter <names>` - Filter pods by component name (comma-separated, used with -all-pods)
 - `-namespace-filter <names>` - Filter pods by namespace (comma-separated, used with -all-pods)
+- `-limit-ips <num>` - Cap number of IPs to scan, for testing (0 = no limit)
+- `-pqc-check` - Check for TLS 1.3 + ML-KEM (post-quantum) support; exits non-zero on failure
+- `-j <num>` - Number of concurrent scans; 0 = runtime.NumCPU() (default: 0)
+- `-artifact-dir <dir>` - Directory for output files (default: /tmp)
 - `-json-file <file>` - Output results in JSON format to specified file
 - `-csv-file <file>` - Output results in CSV format to specified file
 - `-junit-file <file>` - Output results in JUnit XML format to specified file
-- `-log-file <file>` - Redirect all log output to the specified file.
-- `-j <num>` - Number of concurrent workers (default: 1, max recommended: 50)
+- `-log-file <file>` - Redirect all log output to the specified file
+- `-timing-file <file>` - Write timing report to specified file in artifact-dir
+- `-version` - Print version and exit

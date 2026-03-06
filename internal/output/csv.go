@@ -1,4 +1,4 @@
-package main
+package output
 
 import (
 	"encoding/csv"
@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/openshift/tls-scanner/internal/scanner"
 )
 
 var csvColumns = []string{
@@ -18,8 +20,7 @@ var csvColumns = []string{
 	"Kubelet Configured MinVersion", "Kubelet MinVersion Compliance", "Kubelet Configured Ciphers", "Kubelet Cipher Compliance",
 }
 
-// writeCSVOutput writes scan results to a CSV file with one row per IP/port combination
-func writeCSVOutput(results ScanResults, filename string) error {
+func WriteCSVOutput(results scanner.ScanResults, filename string) error {
 	log.Printf("Writing CSV output to: %s", filename)
 
 	file, err := os.Create(filename)
@@ -31,15 +32,12 @@ func writeCSVOutput(results ScanResults, filename string) error {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	// Write header
 	if err := writer.Write(csvColumns); err != nil {
 		return fmt.Errorf("failed to write CSV header: %v", err)
 	}
 
 	rowCount := 0
 
-	// Defensive checks for nil TLSSecurityConfig
-	// TODO initialize these values in the results struct to avoid this mess.
 	var ingressProfile, ingressMinVersion, ingressCiphers string
 	var apiProfile, apiMinVersion, apiCiphers string
 	var kubeletMinVersion, kubeletCiphers string
@@ -80,17 +78,12 @@ func writeCSVOutput(results ScanResults, filename string) error {
 		kubeletCiphers = "N/A"
 	}
 
-	// Write data rows - one row per IP/port combination
 	for _, ipResult := range results.IPResults {
 		ipAddress := ipResult.IP
 
-		// Process each port result
 		for _, portResult := range ipResult.PortResults {
-			targetPort := portResult.Port
+			port := strconv.Itoa(portResult.Port)
 
-			port := strconv.Itoa(targetPort)
-
-			// Create row data
 			podName := "N/A"
 			namespace := "N/A"
 			if ipResult.Pod != nil {
@@ -105,13 +98,11 @@ func writeCSVOutput(results ScanResults, filename string) error {
 				componentMaintainer = ipResult.OpenshiftComponent.MaintainerComponent
 			}
 
-			// Determine status string - default to N/A if not set
 			statusStr := "N/A"
 			if portResult.Status != "" {
 				statusStr = string(portResult.Status)
 			}
 
-			// Extract supported groups (combines key exchange groups and KEMs)
 			supportedGroups := "N/A"
 			if portResult.TlsKeyExchange != nil {
 				allGroups := append([]string{}, portResult.TlsKeyExchange.Groups...)
@@ -180,14 +171,12 @@ func writeCSVOutput(results ScanResults, filename string) error {
 			}
 			rowCount++
 		}
-
 	}
 
 	return nil
 }
 
-// writeScanErrorsCSV writes scan errors to a CSV file
-func writeScanErrorsCSV(results ScanResults, filename string) error {
+func WriteScanErrorsCSV(results scanner.ScanResults, filename string) error {
 	if len(results.ScanErrors) == 0 {
 		log.Printf("No scan errors to write to CSV file")
 		return nil
@@ -204,13 +193,11 @@ func writeScanErrorsCSV(results ScanResults, filename string) error {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	// Write header
 	header := []string{"IP", "Port", "Error Type", "Error Message", "Pod Name", "Namespace", "Container"}
 	if err := writer.Write(header); err != nil {
 		return fmt.Errorf("failed to write scan errors CSV header: %v", err)
 	}
 
-	// Write error rows
 	for _, scanError := range results.ScanErrors {
 		row := []string{
 			scanError.IP,
@@ -231,7 +218,6 @@ func writeScanErrorsCSV(results ScanResults, filename string) error {
 	return nil
 }
 
-// Helper function to build CSV row based on selected columns
 func buildCSVRow(selectedColumns []string, data map[string]string) []string {
 	row := make([]string, len(selectedColumns))
 	for i, col := range selectedColumns {
@@ -244,7 +230,6 @@ func buildCSVRow(selectedColumns []string, data map[string]string) []string {
 	return row
 }
 
-// Helper functions
 func stringOrNA(s string) string {
 	if s == "" {
 		return "N/A"
@@ -259,7 +244,6 @@ func joinOrNA(slice []string) string {
 	return strings.Join(slice, ", ")
 }
 
-// Helper function to remove duplicates from string slice
 func removeDuplicates(slice []string) []string {
 	keys := make(map[string]bool)
 	var result []string
@@ -277,4 +261,13 @@ func boolToYesNo(b bool) string {
 		return "Yes"
 	}
 	return "No"
+}
+
+func stringInSlice(s string, list []string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }

@@ -16,7 +16,7 @@ spec:
         args:
           - |
             # Run the scanner in the background and capture its exit code
-            /usr/local/bin/tls-scanner -j 4 --all-pods --artifact-dir /artifacts --json-file /artifacts/results.json --csv-file /artifacts/results.csv --timing-file timing.txt --log-file /artifacts/scan.log ${NAMESPACE_FILTER_ARG} ${LIMIT_IPS_ARG} &
+            /usr/local/bin/tls-scanner --all-pods -j ${SCANNER_PARALLEL:-4} --artifact-dir /artifacts --json-file /artifacts/results.json --csv-file /artifacts/results.csv --timing-file timing.txt --log-file /artifacts/scan.log ${NAMESPACE_FILTER_ARG} ${LIMIT_IPS_ARG} &
             
             SCANNER_PID=$!
             
@@ -38,17 +38,17 @@ spec:
             echo "Scanner finished with exit code: $exit_code"
             echo "=========================================="
             
-            # Keep the container alive to allow artifact collection
-            echo "Pausing for log and artifact collection..."
-            sleep 300
-            exit $exit_code
+            echo "Pausing for artifact collection..."
+            sleep ${ARTIFACT_WAIT:-300}
+            # Always exit 0 so the Job completes — compliance results are in the artifacts
+            exit 0
         resources:
           requests:
-            cpu: "4"
-            memory: 4Gi
+            cpu: "${SCANNER_CPU:-4}"
+            memory: "${SCANNER_MEM:-4Gi}"
           limits:
-            cpu: "4"
-            memory: 4Gi
+            cpu: "${SCANNER_CPU:-4}"
+            memory: "${SCANNER_MEM:-4Gi}"
         securityContext:
           privileged: true
         volumeMounts:

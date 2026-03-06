@@ -1,15 +1,14 @@
-package main
+package output
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"strings"
+
+	"github.com/openshift/tls-scanner/internal/scanner"
 )
 
-func printClusterResults(results ScanResults) {
+func PrintClusterResults(results scanner.ScanResults) {
 	fmt.Printf("=== CLUSTER SCAN RESULTS ===\n")
 	fmt.Printf("Timestamp: %s\n", results.Timestamp)
 	fmt.Printf("Total IPs: %d\n", results.TotalIPs)
@@ -83,7 +82,7 @@ func printClusterResults(results ScanResults) {
 	}
 }
 
-func printParsedResults(results ScanResults) {
+func PrintParsedResults(results scanner.ScanResults) {
 	if len(results.IPResults) == 0 {
 		log.Println("No hosts were scanned or host is down.")
 		return
@@ -115,75 +114,78 @@ func printParsedResults(results ScanResults) {
 	}
 }
 
-func writeJSONOutput(data interface{}, filename string) error {
-	file, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %v", err)
-	}
-	defer file.Close()
+func PrintPQCClusterResults(results scanner.ScanResults) {
+	fmt.Printf("\n========================================\n")
+	fmt.Printf("PQC CHECK RESULTS\n")
+	fmt.Printf("========================================\n")
+	fmt.Printf("Timestamp: %s\n", results.Timestamp)
+	fmt.Printf("Total IPs: %d\n", results.TotalIPs)
+	fmt.Printf("Scanned:   %d\n", results.ScannedIPs)
+	fmt.Printf("\n")
 
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(data); err != nil {
-		return fmt.Errorf("failed to encode JSON: %v", err)
-	}
+	tls13Count := 0
+	mlkemCount := 0
+	pqcReadyCount := 0
 
-	log.Printf("JSON output written to: %s", filename)
-	return nil
-}
+	for _, ipResult := range results.IPResults {
+		fmt.Printf("-----------------------------------------------------\n")
+		fmt.Printf("IP: %s\n", ipResult.IP)
 
-func writeOutputFiles(results ScanResults, artifactDir, jsonFile, csvFile, junitFile string) {
-	if jsonFile == "" && csvFile == "" && junitFile == "" {
-		return
-	}
-
-	if err := os.MkdirAll(artifactDir, 0755); err != nil {
-		log.Fatalf("Could not create artifact directory %s: %v", artifactDir, err)
-	}
-	log.Printf("Artifacts will be saved to: %s", artifactDir)
-
-	if jsonFile != "" {
-		jsonPath := jsonFile
-		if !filepath.IsAbs(jsonPath) {
-			jsonPath = filepath.Join(artifactDir, jsonFile)
+		if ipResult.Pod != nil {
+			fmt.Printf("Pod: %s/%s\n", ipResult.Pod.Namespace, ipResult.Pod.Name)
 		}
-		if err := writeJSONOutput(results, jsonPath); err != nil {
-			log.Printf("Error writing JSON output: %v", err)
-		} else {
-			log.Printf("JSON results written to: %s", jsonPath)
-		}
-	}
-
-	if csvFile != "" {
-		csvPath := csvFile
-		if !filepath.IsAbs(csvPath) {
-			csvPath = filepath.Join(artifactDir, csvFile)
-		}
-		if err := writeCSVOutput(results, csvPath); err != nil {
-			log.Printf("Error writing CSV output: %v", err)
-		} else {
-			log.Printf("CSV results written to: %s", csvPath)
+		if ipResult.OpenshiftComponent != nil {
+			fmt.Printf("Component: %s\n", ipResult.OpenshiftComponent.Component)
 		}
 
-		if len(results.ScanErrors) > 0 {
-			errorFilename := strings.TrimSuffix(csvPath, filepath.Ext(csvPath)) + "_errors.csv"
-			if err := writeScanErrorsCSV(results, errorFilename); err != nil {
-				log.Printf("Error writing scan errors CSV: %v", err)
+		if ipResult.Error != "" {
+			fmt.Printf("  Error: %s\n", ipResult.Error)
+			continue
+		}
+
+		for _, portResult := range ipResult.PortResults {
+			if portResult.Status == scanner.StatusNoPorts {
+				fmt.Printf("  No TCP ports declared\n")
+				continue
+			}
+
+			fmt.Printf("  Port %d:\n", portResult.Port)
+
+			if portResult.TLS13Supported {
+				fmt.Printf("    TLS 1.3:  SUPPORTED\n")
+				tls13Count++
 			} else {
-				log.Printf("Scan errors written to: %s", errorFilename)
+				fmt.Printf("    TLS 1.3:  NOT SUPPORTED\n")
+			}
+
+			if portResult.MLKEMSupported {
+				fmt.Printf("    ML-KEM:   SUPPORTED\n")
+				fmt.Printf("    ML-KEM KEMs: %s\n", strings.Join(portResult.MLKEMCiphers, ", "))
+				mlkemCount++
+			} else {
+				fmt.Printf("    ML-KEM:   NOT SUPPORTED\n")
+			}
+
+			if portResult.TLS13Supported && portResult.MLKEMSupported {
+				pqcReadyCount++
+			}
+
+			if len(portResult.TlsVersions) > 0 {
+				fmt.Printf("    TLS Versions: %s\n", strings.Join(portResult.TlsVersions, ", "))
+			}
+
+			if len(portResult.AllKEMs) > 0 {
+				fmt.Printf("    All KEMs: %s\n", strings.Join(portResult.AllKEMs, ", "))
 			}
 		}
 	}
 
-	if junitFile != "" {
-		junitPath := junitFile
-		if !filepath.IsAbs(junitPath) {
-			junitPath = filepath.Join(artifactDir, junitFile)
-		}
-		if err := writeJUnitOutput(results, junitPath); err != nil {
-			log.Printf("Error writing JUnit XML output: %v", err)
-		} else {
-			log.Printf("JUnit XML results written to: %s", junitPath)
-		}
-	}
+	fmt.Printf("\n========================================\n")
+	fmt.Printf("SUMMARY\n")
+	fmt.Printf("========================================\n")
+	fmt.Printf("Total Ports Scanned: %d\n", results.ScannedIPs)
+	fmt.Printf("TLS 1.3 Ready:       %d\n", tls13Count)
+	fmt.Printf("ML-KEM Ready:        %d\n", mlkemCount)
+	fmt.Printf("Fully PQC Ready:     %d (TLS 1.3 + ML-KEM)\n", pqcReadyCount)
+	fmt.Printf("========================================\n")
 }

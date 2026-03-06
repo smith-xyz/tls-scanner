@@ -1,4 +1,4 @@
-package main
+package timing
 
 import (
 	"fmt"
@@ -9,26 +9,25 @@ import (
 	"time"
 )
 
-type TimingEntry struct {
+type Entry struct {
 	Function string
 	Target   string
 	Duration time.Duration
 	Start    time.Time
 }
 
-type TimingCollector struct {
+type Collector struct {
 	mu      sync.Mutex
-	entries []TimingEntry
+	entries []Entry
 }
 
-var timings = &TimingCollector{}
+var Timings = &Collector{}
 
-// Track returns a stop function. Call it with defer: defer timings.Track("fn", "target")()
-func (tc *TimingCollector) Track(function, target string) func() {
+func (tc *Collector) Track(function, target string) func() {
 	start := time.Now()
 	return func() {
 		tc.mu.Lock()
-		tc.entries = append(tc.entries, TimingEntry{
+		tc.entries = append(tc.entries, Entry{
 			Function: function,
 			Target:   target,
 			Duration: time.Since(start),
@@ -38,9 +37,9 @@ func (tc *TimingCollector) Track(function, target string) func() {
 	}
 }
 
-func (tc *TimingCollector) WriteReport(filename string) error {
+func (tc *Collector) WriteReport(filename string) error {
 	tc.mu.Lock()
-	entries := make([]TimingEntry, len(tc.entries))
+	entries := make([]Entry, len(tc.entries))
 	copy(entries, tc.entries)
 	tc.mu.Unlock()
 
@@ -63,14 +62,12 @@ func (tc *TimingCollector) WriteReport(filename string) error {
 	}
 	defer f.Close()
 
-	// Per-call detail
 	fmt.Fprintf(f, "%-35s %-30s %12s\n", "FUNCTION", "TARGET", "DURATION")
 	fmt.Fprintf(f, "%s\n", "---------------------------------------------------------------------------------")
 	for _, e := range entries {
 		fmt.Fprintf(f, "%-35s %-30s %12s\n", e.Function, e.Target, e.Duration.Round(time.Millisecond))
 	}
 
-	// Aggregate summary per function
 	type summary struct {
 		count int
 		total time.Duration
@@ -94,7 +91,6 @@ func (tc *TimingCollector) WriteReport(filename string) error {
 		}
 	}
 
-	// Sort function names for stable output
 	funcs := make([]string, 0, len(agg))
 	for fn := range agg {
 		funcs = append(funcs, fn)

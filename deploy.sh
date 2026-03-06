@@ -1,7 +1,7 @@
 #!/bin/bash
 # A script to build, deploy, and run the OpenShift scanner application.
 #
-# Usage: ./deploy.sh [--local] [action]
+# Usage: ./deploy.sh [--verbose] [action]
 # Actions:
 #   build           - Build the container image.
 #   push            - Push the container image to a registry.
@@ -12,7 +12,16 @@
 #   (no action)     - Run a full-deploy and then cleanup.
 #
 # Environment Variables:
-#   TLS_TEST_TIMEOUT - Timeout in seconds for cluster stabilization during TLS tests (default: 600)
+#   DOCKERFILE       - Dockerfile to use (default: Dockerfile, use Dockerfile.local for local builds)
+#   SCANNER_IMAGE    - Image name (default: quay.io/user/tls-scanner:latest)
+#   NAMESPACE        - Target namespace (default: current oc project)
+#   NAMESPACE_FILTER - Comma-separated namespace list to scan
+#   LIMIT_IPS        - Limit number of IPs to scan (default: 0 = no limit)
+#   SCANNER_CPU      - CPU request/limit for scanner pod (default: 4)
+#   SCANNER_MEM      - Memory request/limit for scanner pod (default: 4Gi)
+#   SCANNER_PARALLEL - Parallel scan count (default: 4)
+#   ARTIFACT_WAIT    - Seconds to keep pod alive after scan for artifact collection (default: 30, CI uses 300)
+#   TLS_TEST_TIMEOUT - Timeout for cluster stabilization during TLS tests (default: 600)
 
 # --- Configuration ---
 APP_NAME="tls-scanner"
@@ -68,21 +77,23 @@ build_image() {
     check_command "go"
 
     echo "--> Building Go binary..."
-    CGO_ENABLED=0 GOOS=linux go build -o tls-scanner .
+    GOOS=linux make build
     check_error "Go build"
 
     echo "--> Building container image: ${SCANNER_IMAGE}"
-    DOCKERFILE="Dockerfile"
-    if [ "$LOCAL_MODE" = true ]; then
-        DOCKERFILE="Dockerfile.local"
-        echo "    Using local Dockerfile: ${DOCKERFILE}"
+    DOCKERFILE="${DOCKERFILE:-Dockerfile}"
+    echo "    Using Dockerfile: ${DOCKERFILE}"
+
+    PLATFORMS="${BUILD_PLATFORMS}"
+    if [ "$DOCKERFILE" = "Dockerfile.local" ]; then
+        PLATFORMS="${TARGET_PLATFORM:-linux/amd64}"
     fi
 
     if command -v podman &> /dev/null; then
-        podman build --platform ${BUILD_PLATFORMS} -t ${SCANNER_IMAGE} -f ${DOCKERFILE} .
+        podman build --platform ${PLATFORMS} -t ${SCANNER_IMAGE} -f ${DOCKERFILE} .
         check_error "Podman build"
     elif command -v docker &> /dev/null; then
-        docker build --platform ${BUILD_PLATFORMS} -t ${SCANNER_IMAGE} -f ${DOCKERFILE} .
+        docker build --platform ${PLATFORMS} -t ${SCANNER_IMAGE} -f ${DOCKERFILE} .
         check_error "Docker build"
     fi
     echo "--> Image built: ${SCANNER_IMAGE}"
@@ -91,20 +102,6 @@ build_image() {
 push_image() {
     print_header "Step 2: Pushing Container Image"
     check_command "podman" || check_command "docker"
-
-    if [ "$LOCAL_MODE" = true ]; then
-        echo "--> Local mode: Ensuring access to internal registry..."
-        REGISTRY_HOST=$(echo "$SCANNER_IMAGE" | cut -d/ -f1)
-        if [[ "$REGISTRY_HOST" == *"openshift-image-registry"* ]]; then
-             if command -v podman &> /dev/null; then
-                 # For podman, we might need to login.
-                 # Check if we are already logged in or try to login
-                 echo "--> Logging into internal registry: $REGISTRY_HOST"
-                 oc registry login --registry="$REGISTRY_HOST" --auth-basic=user:$(oc whoami -t) --to=/dev/null || \
-                 podman login -u user -p $(oc whoami -t) --tls-verify=false "$REGISTRY_HOST"
-             fi
-        fi
-    fi
 
     echo "--> Pushing container image: ${SCANNER_IMAGE}"
     if command -v podman &> /dev/null; then
@@ -196,7 +193,7 @@ EOF
 
     NAMESPACE_FILTER_ARG=""
     if [ -n "$NAMESPACE_FILTER" ]; then
-        NAMESPACE_FILTER_ARG="--namespace-filter ${NAMESPACE_FILTER}"
+        NAMESPACE_FILTER_ARG="--namespace-filter $(echo "${NAMESPACE_FILTER}" | tr -d ' ')"
     fi
     
     LIMIT_IPS_ARG=""
@@ -205,8 +202,11 @@ EOF
         echo "--> Limiting scan to first ${LIMIT_IPS} IPs (testing mode)"
     fi
 
-    # Substitute environment variables in the template and apply it
-    sed -e "s|\\\${SCANNER_IMAGE}|${SCANNER_IMAGE}|g" -e "s|\\\${NAMESPACE}|${NAMESPACE}|g" -e "s|\\\${JOB_NAME}|${JOB_NAME}|g" -e "s|\\\${NAMESPACE_FILTER_ARG}|${NAMESPACE_FILTER_ARG}|g" -e "s|\\\${LIMIT_IPS_ARG}|${LIMIT_IPS_ARG}|g" "$JOB_TEMPLATE" | oc apply -f -
+    SCANNER_CPU="${SCANNER_CPU:-4}"
+    SCANNER_MEM="${SCANNER_MEM:-4Gi}"
+    SCANNER_PARALLEL="${SCANNER_PARALLEL:-4}"
+    ARTIFACT_WAIT="${ARTIFACT_WAIT:-30}"
+    sed -e "s|\\\${SCANNER_IMAGE}|${SCANNER_IMAGE}|g" -e "s|\\\${NAMESPACE}|${NAMESPACE}|g" -e "s|\\\${JOB_NAME}|${JOB_NAME}|g" -e "s|\\\${NAMESPACE_FILTER_ARG}|${NAMESPACE_FILTER_ARG}|g" -e "s|\\\${LIMIT_IPS_ARG}|${LIMIT_IPS_ARG}|g" -e "s|\\\${SCANNER_CPU:-4}|${SCANNER_CPU}|g" -e "s|\\\${SCANNER_MEM:-4Gi}|${SCANNER_MEM}|g" -e "s|\\\${SCANNER_PARALLEL:-4}|${SCANNER_PARALLEL}|g" -e "s|\\\${ARTIFACT_WAIT:-300}|${ARTIFACT_WAIT}|g" "$JOB_TEMPLATE" | oc apply -f -
     check_error "Applying Job manifest"
 
     echo "--> Scanner Job '${JOB_NAME}' deployed."
@@ -276,42 +276,49 @@ EOF
         exit 1
     fi
 
-    echo "--> To monitor logs, run: oc logs -f job/${JOB_NAME} -n ${NAMESPACE}"
     echo "--> Waiting for scanner to finish... (timeout: 4h)"
 
-    # Find the pod created by the job
     POD_NAME=$(oc get pods -n "${NAMESPACE}" -l job-name=${JOB_NAME} -o jsonpath='{.items[0].metadata.name}')
-    
-    # Monitor logs and wait for the scanner to finish (but NOT for the pod to complete)
-    # The scanner prints "Scanner finished with exit code:" when done
+
+    LOG_PID=""
+    if [ "$VERBOSE" = true ]; then
+        echo "--> Streaming pod logs (--verbose)..."
+        oc logs -f "pod/${POD_NAME}" -n "${NAMESPACE}" 2>/dev/null &
+        LOG_PID=$!
+    else
+        echo "--> To stream logs, rerun with --verbose or: oc logs -f pod/${POD_NAME} -n ${NAMESPACE}"
+    fi
+
     START_TIME=$(date +%s)
-    TIMEOUT=14400  # 4 hours in seconds (increased to accommodate large cluster scans)
+    TIMEOUT=14400
     SCANNER_FINISHED=false
-    
+
     while true; do
         CURRENT_TIME=$(date +%s)
         ELAPSED=$((CURRENT_TIME - START_TIME))
-        
+
         if [ $ELAPSED -gt $TIMEOUT ]; then
+            [ -n "$LOG_PID" ] && kill $LOG_PID 2>/dev/null || true
             echo "Error: Scanner did not complete within 4h timeout."
             exit 1
         fi
-        
-        # Check if scanner has finished by looking for the completion message in logs
+
         if oc logs "pod/${POD_NAME}" -n "${NAMESPACE}" 2>/dev/null | grep -q "Scanner finished with exit code:"; then
             SCANNER_FINISHED=true
+            sleep 2
+            [ -n "$LOG_PID" ] && kill $LOG_PID 2>/dev/null || true
+            echo ""
             echo "--> Scanner has finished. Copying artifacts while pod is still alive..."
             break
         fi
-        
-        # Check if pod failed
+
         POD_STATUS=$(oc get pod "${POD_NAME}" -n "${NAMESPACE}" -o jsonpath='{.status.phase}' 2>/dev/null)
         if [ "$POD_STATUS" = "Failed" ]; then
+            [ -n "$LOG_PID" ] && kill $LOG_PID 2>/dev/null || true
             echo "Error: Scanner pod failed."
-            oc logs "pod/${POD_NAME}" -n "${NAMESPACE}"
             exit 1
         fi
-        
+
         sleep 5
     done
     
@@ -735,44 +742,34 @@ cleanup() {
 
 # --- Main Logic ---
 
-LOCAL_MODE=false
-NAMESPACE_FILTER=""
+NAMESPACE_FILTER="${NAMESPACE_FILTER:-}"
+VERBOSE=false
 POSITIONAL_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --local)
-      LOCAL_MODE=true
-      shift # past argument
-      ;;
     -n|--namespace-filter)
       NAMESPACE_FILTER="$2"
-      shift # past argument
-      shift # past value
+      shift
+      shift
       ;;
     --limit-ips)
       LIMIT_IPS="$2"
-      shift # past argument
-      shift # past value
+      shift
+      shift
+      ;;
+    -v|--verbose)
+      VERBOSE=true
+      shift
       ;;
     *)
-      POSITIONAL_ARGS+=("$1") # save positional arg
-      shift # past argument
+      POSITIONAL_ARGS+=("$1")
+      shift
       ;;
   esac
 done
 
-set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
-
-# Adjust SCANNER_IMAGE for local mode if not explicitly set to something else
-if [ "$LOCAL_MODE" = true ]; then
-    # Only override if the user didn't set a custom SCANNER_IMAGE, or if it's the default value
-    if [ "$SCANNER_IMAGE" = "quay.io/user/tls-scanner:latest" ]; then
-        REGISTRY_HOST=$(oc registry info 2>/dev/null || echo "default-route-openshift-image-registry.apps-crc.testing")
-        SCANNER_IMAGE="${REGISTRY_HOST}/${NAMESPACE}/${APP_NAME}:latest"
-        echo "--> Local mode detected. Switching image to internal registry: ${SCANNER_IMAGE}"
-    fi
-fi
+set -- "${POSITIONAL_ARGS[@]}"
 
 ACTION=$1
 

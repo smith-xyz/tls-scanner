@@ -1,5 +1,5 @@
 bin/*
-tls-scanner
+/tls-scanner
 
 # Test artifacts and results
 artifacts/

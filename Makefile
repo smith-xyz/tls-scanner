@@ -14,6 +14,11 @@ GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get
 GOMOD=$(GOCMD) mod
 
+# Version info — injected at build time, no .git/ needed in container
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
+
 # Default target
 .PHONY: all
 all: build
@@ -22,7 +27,7 @@ all: build
 .PHONY: build
 build:
 	mkdir -p $(BUILD_DIR)
-	$(GOBUILD) -mod=mod -o $(BUILD_DIR)/$(BINARY_NAME) .
+	CGO_ENABLED=0 $(GOBUILD) -mod=readonly -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/tls-scanner
 
 # Clean build artifacts
 .PHONY: clean
@@ -36,35 +41,30 @@ deps:
 	$(GOMOD) download
 	$(GOMOD) tidy
 
-# Run tests
+# Run tests (skips integration tests that hit live endpoints)
 .PHONY: test
 test:
-	$(GOTEST) -v ./...
+	$(GOTEST) -v -short ./...
+
+# Run benchmarks (parsing only, no network)
+.PHONY: bench
+bench:
+	$(GOTEST) -bench=. -benchmem -short ./internal/...
+
+# Run integration benchmarks against live TLS endpoints (requires testssl.sh)
+.PHONY: bench-integration
+bench-integration:
+	$(GOTEST) -v -run Integration -count=1 -timeout=600s ./internal/scanner/
+
+# Vet
+.PHONY: vet
+vet:
+	$(GOCMD) vet ./...
 
 # Install the binary to GOPATH/bin
 .PHONY: install
 install:
-	$(GOCMD) install .
-
-# Install nmap dependency
-.PHONY: install-nmap
-install-nmap:
-	@if command -v apt-get >/dev/null 2>&1; then \
-		echo "Installing nmap using apt-get..."; \
-		sudo apt-get update && sudo apt-get install -y nmap; \
-	elif command -v yum >/dev/null 2>&1; then \
-		echo "Installing nmap using yum..."; \
-		sudo yum install -y nmap; \
-	elif command -v dnf >/dev/null 2>&1; then \
-		echo "Installing nmap using dnf..."; \
-		sudo dnf install -y nmap; \
-	elif command -v pacman >/dev/null 2>&1; then \
-		echo "Installing nmap using pacman..."; \
-		sudo pacman -S --noconfirm nmap; \
-	else \
-		echo "Package manager not detected. Please install nmap manually."; \
-		exit 1; \
-	fi
+	$(GOCMD) install ./cmd/tls-scanner
 
 # Run the program with default parameters
 .PHONY: run
@@ -79,7 +79,9 @@ help:
 	@echo "  clean        - Clean build artifacts"
 	@echo "  deps         - Download and tidy dependencies"
 	@echo "  test         - Run tests"
+	@echo "  bench        - Run benchmarks (parsing, no network)"
+	@echo "  bench-integ  - Run integration benchmarks (requires testssl.sh)"
+	@echo "  vet          - Run go vet"
 	@echo "  install      - Install binary to GOPATH/bin"
-	@echo "  install-nmap - Install nmap dependency"
 	@echo "  run          - Build and run with default parameters"
 	@echo "  help         - Show this help message"
