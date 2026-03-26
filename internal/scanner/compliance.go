@@ -1,8 +1,36 @@
 package scanner
 
 import (
+	"strings"
+
 	"github.com/openshift/tls-scanner/internal/k8s"
 )
+
+// ComponentType identifies which TLS profile should be used when checking
+// compliance for a scanned port.
+type ComponentType int
+
+const (
+	// GenericComponent covers all components that have no override capability —
+	// they must honor the cluster-wide APIServer TLS profile.
+	GenericComponent ComponentType = iota
+	// IngressComponent covers pods in the openshift-ingress namespace, which
+	// may carry an IngressController-specific TLS profile override.
+	IngressComponent
+	// KubeletComponent covers kubelet ports (10250/10255), which may carry a
+	// KubeletConfig-specific TLS profile override.
+	KubeletComponent
+)
+
+func ComponentTypeFromPod(namespace string, port int) ComponentType {
+	if strings.EqualFold(namespace, "openshift-ingress") {
+		return IngressComponent
+	}
+	if port == 10250 || port == 10255 {
+		return KubeletComponent
+	}
+	return GenericComponent
+}
 
 func getMinVersionValue(versions []string) int {
 	if len(versions) == 0 {
@@ -19,10 +47,10 @@ func getMinVersionValue(versions []string) int {
 }
 
 type profileInput struct {
-	profileType    string
-	minTLSVersion  string
+	profileType     string
+	minTLSVersion   string
 	expectedCiphers []string
-	result         *TLSConfigComplianceResult
+	result          *TLSConfigComplianceResult
 }
 
 func evaluateCompliance(scannedMinVer int, scannedCiphers []string, input profileInput) {
@@ -35,31 +63,43 @@ func evaluateCompliance(scannedMinVer int, scannedCiphers []string, input profil
 	input.result.Ciphers = checkCipherCompliance(scannedCiphers, input.expectedCiphers)
 }
 
-func CheckCompliance(portResult *PortResult, tlsProfile *k8s.TLSSecurityProfile) {
+// CheckCompliance evaluates whether the port's observed TLS configuration
+// honours the profile that applies to its component type:
+//   - IngressComponent  → IngressController profile (or APIServer if no override)
+//   - KubeletComponent  → KubeletConfig profile     (or APIServer if no override)
+//   - GenericComponent  → APIServer profile
+//
+// Only the relevant TLSConfigComplianceResult field on portResult is populated,
+// leaving the others nil so callers never need to reason about which one to check.
+func CheckCompliance(portResult *PortResult, tlsProfile *k8s.TLSSecurityProfile, componentType ComponentType) {
 	scannedMinVer := 0
 	if portResult.TlsVersions != nil {
 		scannedMinVer = getMinVersionValue(portResult.TlsVersions)
 	}
 
-	portResult.IngressTLSConfigCompliance = &TLSConfigComplianceResult{}
-	portResult.APIServerTLSConfigCompliance = &TLSConfigComplianceResult{}
-	portResult.KubeletTLSConfigCompliance = &TLSConfigComplianceResult{}
+	switch componentType {
+	case IngressComponent:
+		if ing := tlsProfile.IngressController; ing != nil {
+			portResult.IngressTLSConfigCompliance = &TLSConfigComplianceResult{}
+			evaluateCompliance(scannedMinVer, portResult.TlsCiphers, profileInput{ing.Type, ing.MinTLSVersion, ing.Ciphers, portResult.IngressTLSConfigCompliance})
+		}
+	case KubeletComponent:
+		if kube := tlsProfile.KubeletConfig; kube != nil {
+			portResult.KubeletTLSConfigCompliance = &TLSConfigComplianceResult{}
+			evaluateCompliance(scannedMinVer, portResult.TlsCiphers, profileInput{"", kube.MinTLSVersion, kube.TLSCipherSuites, portResult.KubeletTLSConfigCompliance})
+		}
+	default:
+		if api := tlsProfile.APIServer; api != nil {
+			portResult.APIServerTLSConfigCompliance = &TLSConfigComplianceResult{}
+			evaluateCompliance(scannedMinVer, portResult.TlsCiphers, profileInput{api.Type, api.MinTLSVersion, api.Ciphers, portResult.APIServerTLSConfigCompliance})
+		}
+	}
+}
 
-	var profiles []profileInput
-
-	if ing := tlsProfile.IngressController; ing != nil {
-		profiles = append(profiles, profileInput{ing.Type, ing.MinTLSVersion, ing.Ciphers, portResult.IngressTLSConfigCompliance})
-	}
-	if api := tlsProfile.APIServer; api != nil {
-		profiles = append(profiles, profileInput{api.Type, api.MinTLSVersion, api.Ciphers, portResult.APIServerTLSConfigCompliance})
-	}
-	if kube := tlsProfile.KubeletConfig; kube != nil {
-		profiles = append(profiles, profileInput{"", kube.MinTLSVersion, kube.TLSCipherSuites, portResult.KubeletTLSConfigCompliance})
-	}
-
-	for _, p := range profiles {
-		evaluateCompliance(scannedMinVer, portResult.TlsCiphers, p)
-	}
+// IsTLSConfigCompliant returns true when a compliance result exists and both
+// the version and cipher checks passed.
+func IsTLSConfigCompliant(result *TLSConfigComplianceResult) bool {
+	return result != nil && result.Version && result.Ciphers
 }
 
 func checkCipherCompliance(gotCiphers []string, expectedCiphers []string) bool {
@@ -89,16 +129,13 @@ func checkCipherCompliance(gotCiphers []string, expectedCiphers []string) bool {
 func HasComplianceFailures(results ScanResults) bool {
 	for _, ipResult := range results.IPResults {
 		for _, portResult := range ipResult.PortResults {
-			if portResult.IngressTLSConfigCompliance != nil &&
-				(!portResult.IngressTLSConfigCompliance.Version || !portResult.IngressTLSConfigCompliance.Ciphers) {
+			if portResult.IngressTLSConfigCompliance != nil && !IsTLSConfigCompliant(portResult.IngressTLSConfigCompliance) {
 				return true
 			}
-			if portResult.APIServerTLSConfigCompliance != nil &&
-				(!portResult.APIServerTLSConfigCompliance.Version || !portResult.APIServerTLSConfigCompliance.Ciphers) {
+			if portResult.APIServerTLSConfigCompliance != nil && !IsTLSConfigCompliant(portResult.APIServerTLSConfigCompliance) {
 				return true
 			}
-			if portResult.KubeletTLSConfigCompliance != nil &&
-				(!portResult.KubeletTLSConfigCompliance.Version || !portResult.KubeletTLSConfigCompliance.Ciphers) {
+			if portResult.KubeletTLSConfigCompliance != nil && !IsTLSConfigCompliant(portResult.KubeletTLSConfigCompliance) {
 				return true
 			}
 		}

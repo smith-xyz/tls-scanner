@@ -321,7 +321,7 @@ func batchScan(jobs []ScanJob, concurrentScans int, client *k8s.Client, tlsConfi
 			portResult.Status = StatusOK
 			portResult.Reason = "TLS scan successful"
 			if tlsConfig != nil {
-				CheckCompliance(&portResult, tlsConfig)
+				CheckCompliance(&portResult, tlsConfig, ComponentTypeFromPod(job.Pod.Namespace, job.Port))
 			}
 		} else {
 			portResult.Status = StatusNoTLS

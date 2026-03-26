@@ -19,6 +19,10 @@ func intermediateProfile() *k8s.TLSSecurityProfile {
 			MinTLSVersion: string(configv1.TLSProfiles[configv1.TLSProfileIntermediateType].MinTLSVersion),
 			Ciphers:       configv1.TLSProfiles[configv1.TLSProfileIntermediateType].Ciphers,
 		},
+		KubeletConfig: &k8s.KubeletTLSProfile{
+			MinTLSVersion:   string(configv1.TLSProfiles[configv1.TLSProfileIntermediateType].MinTLSVersion),
+			TLSCipherSuites: configv1.TLSProfiles[configv1.TLSProfileIntermediateType].Ciphers,
+		},
 	}
 }
 
@@ -65,92 +69,110 @@ func emptyProfile() *k8s.TLSSecurityProfile {
 
 func TestCheckCompliance(t *testing.T) {
 	tests := []struct {
-		name              string
-		tlsVersions       []string
-		ciphers           []string
-		profile           *k8s.TLSSecurityProfile
-		wantAPIVersion    bool
-		wantAPICiphers    bool
-		wantAPIProfile    string
-		wantIngressVer    bool
-		wantIngressCipher bool
+		name          string
+		tlsVersions   []string
+		ciphers       []string
+		profile       *k8s.TLSSecurityProfile
+		componentType ComponentType
+		wantVersion   bool
+		wantCiphers   bool
+		wantProfile   string
+		// which result field should be populated
+		checkIngress bool
+		checkAPI     bool
+		checkKubelet bool
 	}{
 		{
-			name:              "Default profile with TLS 1.2+1.3 resolved to Intermediate",
-			tlsVersions:       []string{"TLSv1.2", "TLSv1.3"},
-			ciphers:           []string{"TLS_AKE_WITH_AES_256_GCM_SHA384", "TLS_AKE_WITH_AES_128_GCM_SHA256"},
-			profile:           defaultProfile(),
-			wantAPIVersion:    true,
-			wantAPICiphers:    true,
-			wantAPIProfile:    "Default",
-			wantIngressVer:    true,
-			wantIngressCipher: true,
+			name:          "Generic component: Default profile with TLS 1.2+1.3",
+			tlsVersions:   []string{"TLSv1.2", "TLSv1.3"},
+			ciphers:       []string{"TLS_AKE_WITH_AES_256_GCM_SHA384", "TLS_AKE_WITH_AES_128_GCM_SHA256"},
+			profile:       defaultProfile(),
+			componentType: GenericComponent,
+			wantVersion:   true,
+			wantCiphers:   true,
+			wantProfile:   "Default",
+			checkAPI:      true,
 		},
 		{
-			name:              "Empty Default profile (no MinTLSVersion/Ciphers) = compliant",
-			tlsVersions:       []string{"TLSv1.2", "TLSv1.3"},
-			ciphers:           []string{"TLS_AKE_WITH_AES_256_GCM_SHA384"},
-			profile:           emptyProfile(),
-			wantAPIVersion:    true,
-			wantAPICiphers:    true,
-			wantAPIProfile:    "Default",
-			wantIngressVer:    true,
-			wantIngressCipher: true,
+			name:          "Generic component: empty profile = compliant",
+			tlsVersions:   []string{"TLSv1.2", "TLSv1.3"},
+			ciphers:       []string{"TLS_AKE_WITH_AES_256_GCM_SHA384"},
+			profile:       emptyProfile(),
+			componentType: GenericComponent,
+			wantVersion:   true,
+			wantCiphers:   true,
+			wantProfile:   "Default",
+			checkAPI:      true,
 		},
 		{
-			name:              "Intermediate profile with TLS 1.2+1.3 and matching ciphers",
-			tlsVersions:       []string{"TLSv1.2", "TLSv1.3"},
-			ciphers:           []string{"TLS_AKE_WITH_AES_256_GCM_SHA384", "TLS_AKE_WITH_AES_128_GCM_SHA256"},
-			profile:           intermediateProfile(),
-			wantAPIVersion:    true,
-			wantAPICiphers:    true,
-			wantAPIProfile:    "Intermediate",
-			wantIngressVer:    true,
-			wantIngressCipher: true,
+			name:          "Generic component: Modern profile with TLS 1.3 = pass",
+			tlsVersions:   []string{"TLSv1.3"},
+			ciphers:       []string{"TLS_AKE_WITH_AES_256_GCM_SHA384"},
+			profile:       modernProfile(),
+			componentType: GenericComponent,
+			wantVersion:   true,
+			wantCiphers:   true,
+			wantProfile:   "Modern",
+			checkAPI:      true,
 		},
 		{
-			name:              "Modern profile with TLS 1.3 only = version pass",
-			tlsVersions:       []string{"TLSv1.3"},
-			ciphers:           []string{"TLS_AKE_WITH_AES_256_GCM_SHA384"},
-			profile:           modernProfile(),
-			wantAPIVersion:    true,
-			wantAPICiphers:    true,
-			wantAPIProfile:    "Modern",
-			wantIngressVer:    true,
-			wantIngressCipher: true,
+			name:          "Generic component: Modern profile with TLS 1.2 = version fail",
+			tlsVersions:   []string{"TLSv1.2"},
+			ciphers:       []string{"TLS_AKE_WITH_AES_256_GCM_SHA384"},
+			profile:       modernProfile(),
+			componentType: GenericComponent,
+			wantVersion:   false,
+			wantCiphers:   true,
+			wantProfile:   "Modern",
+			checkAPI:      true,
 		},
 		{
-			name:              "Modern profile with TLS 1.2 = version fail",
-			tlsVersions:       []string{"TLSv1.2"},
-			ciphers:           []string{"TLS_AKE_WITH_AES_256_GCM_SHA384"},
-			profile:           modernProfile(),
-			wantAPIVersion:    false,
-			wantAPICiphers:    true,
-			wantAPIProfile:    "Modern",
-			wantIngressVer:    false,
-			wantIngressCipher: true,
+			name:          "Generic component: Intermediate profile with unknown cipher = cipher fail",
+			tlsVersions:   []string{"TLSv1.2", "TLSv1.3"},
+			ciphers:       []string{"UNKNOWN_CIPHER_SUITE"},
+			profile:       intermediateProfile(),
+			componentType: GenericComponent,
+			wantVersion:   true,
+			wantCiphers:   false,
+			wantProfile:   "Intermediate",
+			checkAPI:      true,
 		},
 		{
-			name:              "Intermediate profile with unknown cipher = cipher fail",
-			tlsVersions:       []string{"TLSv1.2", "TLSv1.3"},
-			ciphers:           []string{"UNKNOWN_CIPHER_SUITE"},
-			profile:           intermediateProfile(),
-			wantAPIVersion:    true,
-			wantAPICiphers:    false,
-			wantAPIProfile:    "Intermediate",
-			wantIngressVer:    true,
-			wantIngressCipher: false,
+			name:          "Generic component: nil APIServer profile = no result populated",
+			tlsVersions:   []string{"TLSv1.3"},
+			ciphers:       []string{"TLS_AKE_WITH_AES_256_GCM_SHA384"},
+			profile:       &k8s.TLSSecurityProfile{},
+			componentType: GenericComponent,
+			checkAPI:      false,
 		},
 		{
-			name:              "Nil profile sections = no compliance populated",
-			tlsVersions:       []string{"TLSv1.3"},
-			ciphers:           []string{"TLS_AKE_WITH_AES_256_GCM_SHA384"},
-			profile:           &k8s.TLSSecurityProfile{},
-			wantAPIVersion:    false,
-			wantAPICiphers:    false,
-			wantAPIProfile:    "",
-			wantIngressVer:    false,
-			wantIngressCipher: false,
+			name:          "Ingress component: uses IngressController profile",
+			tlsVersions:   []string{"TLSv1.2", "TLSv1.3"},
+			ciphers:       []string{"TLS_AKE_WITH_AES_256_GCM_SHA384", "TLS_AKE_WITH_AES_128_GCM_SHA256"},
+			profile:       intermediateProfile(),
+			componentType: IngressComponent,
+			wantVersion:   true,
+			wantCiphers:   true,
+			wantProfile:   "Intermediate",
+			checkIngress:  true,
+		},
+		{
+			name:          "Ingress component: nil IngressController profile = no result populated",
+			tlsVersions:   []string{"TLSv1.3"},
+			ciphers:       []string{"TLS_AKE_WITH_AES_256_GCM_SHA384"},
+			profile:       &k8s.TLSSecurityProfile{},
+			componentType: IngressComponent,
+			checkIngress:  false,
+		},
+		{
+			name:          "Kubelet component: uses KubeletConfig profile",
+			tlsVersions:   []string{"TLSv1.2"},
+			ciphers:       []string{"TLS_AKE_WITH_AES_256_GCM_SHA384", "TLS_AKE_WITH_AES_128_GCM_SHA256"},
+			profile:       intermediateProfile(),
+			componentType: KubeletComponent,
+			wantVersion:   true,
+			wantCiphers:   true,
+			checkKubelet:  true,
 		},
 	}
 
@@ -160,22 +182,73 @@ func TestCheckCompliance(t *testing.T) {
 				TlsVersions: tt.tlsVersions,
 				TlsCiphers:  tt.ciphers,
 			}
-			CheckCompliance(pr, tt.profile)
+			CheckCompliance(pr, tt.profile, tt.componentType)
 
-			if pr.APIServerTLSConfigCompliance.Version != tt.wantAPIVersion {
-				t.Errorf("API version compliance = %v, want %v", pr.APIServerTLSConfigCompliance.Version, tt.wantAPIVersion)
+			// Verify that only the expected compliance field is populated.
+			if tt.checkAPI {
+				if pr.APIServerTLSConfigCompliance == nil {
+					t.Fatal("APIServerTLSConfigCompliance is nil, want populated")
+				}
+				if pr.APIServerTLSConfigCompliance.Version != tt.wantVersion {
+					t.Errorf("API version compliance = %v, want %v", pr.APIServerTLSConfigCompliance.Version, tt.wantVersion)
+				}
+				if pr.APIServerTLSConfigCompliance.Ciphers != tt.wantCiphers {
+					t.Errorf("API cipher compliance = %v, want %v", pr.APIServerTLSConfigCompliance.Ciphers, tt.wantCiphers)
+				}
+				if tt.wantProfile != "" && pr.APIServerTLSConfigCompliance.ConfiguredProfile != tt.wantProfile {
+					t.Errorf("API configured profile = %q, want %q", pr.APIServerTLSConfigCompliance.ConfiguredProfile, tt.wantProfile)
+				}
+				if pr.IngressTLSConfigCompliance != nil {
+					t.Error("IngressTLSConfigCompliance should be nil for GenericComponent")
+				}
+				if pr.KubeletTLSConfigCompliance != nil {
+					t.Error("KubeletTLSConfigCompliance should be nil for GenericComponent")
+				}
 			}
-			if pr.APIServerTLSConfigCompliance.Ciphers != tt.wantAPICiphers {
-				t.Errorf("API cipher compliance = %v, want %v", pr.APIServerTLSConfigCompliance.Ciphers, tt.wantAPICiphers)
+
+			if tt.checkIngress {
+				if pr.IngressTLSConfigCompliance == nil {
+					t.Fatal("IngressTLSConfigCompliance is nil, want populated")
+				}
+				if pr.IngressTLSConfigCompliance.Version != tt.wantVersion {
+					t.Errorf("Ingress version compliance = %v, want %v", pr.IngressTLSConfigCompliance.Version, tt.wantVersion)
+				}
+				if pr.IngressTLSConfigCompliance.Ciphers != tt.wantCiphers {
+					t.Errorf("Ingress cipher compliance = %v, want %v", pr.IngressTLSConfigCompliance.Ciphers, tt.wantCiphers)
+				}
+				if tt.wantProfile != "" && pr.IngressTLSConfigCompliance.ConfiguredProfile != tt.wantProfile {
+					t.Errorf("Ingress configured profile = %q, want %q", pr.IngressTLSConfigCompliance.ConfiguredProfile, tt.wantProfile)
+				}
+				if pr.APIServerTLSConfigCompliance != nil {
+					t.Error("APIServerTLSConfigCompliance should be nil for IngressComponent")
+				}
+				if pr.KubeletTLSConfigCompliance != nil {
+					t.Error("KubeletTLSConfigCompliance should be nil for IngressComponent")
+				}
 			}
-			if pr.APIServerTLSConfigCompliance.ConfiguredProfile != tt.wantAPIProfile {
-				t.Errorf("API configured profile = %q, want %q", pr.APIServerTLSConfigCompliance.ConfiguredProfile, tt.wantAPIProfile)
+
+			if tt.checkKubelet {
+				if pr.KubeletTLSConfigCompliance == nil {
+					t.Fatal("KubeletTLSConfigCompliance is nil, want populated")
+				}
+				if pr.KubeletTLSConfigCompliance.Version != tt.wantVersion {
+					t.Errorf("Kubelet version compliance = %v, want %v", pr.KubeletTLSConfigCompliance.Version, tt.wantVersion)
+				}
+				if pr.KubeletTLSConfigCompliance.Ciphers != tt.wantCiphers {
+					t.Errorf("Kubelet cipher compliance = %v, want %v", pr.KubeletTLSConfigCompliance.Ciphers, tt.wantCiphers)
+				}
+				if pr.APIServerTLSConfigCompliance != nil {
+					t.Error("APIServerTLSConfigCompliance should be nil for KubeletComponent")
+				}
+				if pr.IngressTLSConfigCompliance != nil {
+					t.Error("IngressTLSConfigCompliance should be nil for KubeletComponent")
+				}
 			}
-			if pr.IngressTLSConfigCompliance.Version != tt.wantIngressVer {
-				t.Errorf("Ingress version compliance = %v, want %v", pr.IngressTLSConfigCompliance.Version, tt.wantIngressVer)
-			}
-			if pr.IngressTLSConfigCompliance.Ciphers != tt.wantIngressCipher {
-				t.Errorf("Ingress cipher compliance = %v, want %v", pr.IngressTLSConfigCompliance.Ciphers, tt.wantIngressCipher)
+
+			if !tt.checkAPI && !tt.checkIngress && !tt.checkKubelet {
+				if pr.APIServerTLSConfigCompliance != nil || pr.IngressTLSConfigCompliance != nil || pr.KubeletTLSConfigCompliance != nil {
+					t.Error("all compliance fields should be nil when no profile is available")
+				}
 			}
 		})
 	}
@@ -237,24 +310,66 @@ func TestHasComplianceFailures(t *testing.T) {
 		want    bool
 	}{
 		{
-			name: "all compliant",
+			name: "APIServer compliant = no failure",
 			results: ScanResults{
 				IPResults: []IPResult{{
 					PortResults: []PortResult{{
 						APIServerTLSConfigCompliance: &TLSConfigComplianceResult{Version: true, Ciphers: true},
-						IngressTLSConfigCompliance:   &TLSConfigComplianceResult{Version: true, Ciphers: true},
 					}},
 				}},
 			},
 			want: false,
 		},
 		{
-			name: "API version failure",
+			name: "Ingress compliant = no failure",
+			results: ScanResults{
+				IPResults: []IPResult{{
+					PortResults: []PortResult{{
+						IngressTLSConfigCompliance: &TLSConfigComplianceResult{Version: true, Ciphers: true},
+					}},
+				}},
+			},
+			want: false,
+		},
+		{
+			name: "Kubelet compliant = no failure",
+			results: ScanResults{
+				IPResults: []IPResult{{
+					PortResults: []PortResult{{
+						KubeletTLSConfigCompliance: &TLSConfigComplianceResult{Version: true, Ciphers: true},
+					}},
+				}},
+			},
+			want: false,
+		},
+		{
+			name: "APIServer version failure = failure",
 			results: ScanResults{
 				IPResults: []IPResult{{
 					PortResults: []PortResult{{
 						APIServerTLSConfigCompliance: &TLSConfigComplianceResult{Version: false, Ciphers: true},
-						IngressTLSConfigCompliance:   &TLSConfigComplianceResult{Version: true, Ciphers: true},
+					}},
+				}},
+			},
+			want: true,
+		},
+		{
+			name: "Ingress cipher failure = failure",
+			results: ScanResults{
+				IPResults: []IPResult{{
+					PortResults: []PortResult{{
+						IngressTLSConfigCompliance: &TLSConfigComplianceResult{Version: true, Ciphers: false},
+					}},
+				}},
+			},
+			want: true,
+		},
+		{
+			name: "Kubelet version failure = failure",
+			results: ScanResults{
+				IPResults: []IPResult{{
+					PortResults: []PortResult{{
+						KubeletTLSConfigCompliance: &TLSConfigComplianceResult{Version: false, Ciphers: true},
 					}},
 				}},
 			},
@@ -278,6 +393,30 @@ func TestHasComplianceFailures(t *testing.T) {
 			got := HasComplianceFailures(tt.results)
 			if got != tt.want {
 				t.Errorf("HasComplianceFailures() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestComponentTypeFromPod(t *testing.T) {
+	tests := []struct {
+		name      string
+		namespace string
+		port      int
+		want      ComponentType
+	}{
+		{"openshift-ingress namespace", "openshift-ingress", 443, IngressComponent},
+		{"kubelet port 10250", "", 10250, KubeletComponent},
+		{"kubelet port 10255", "", 10255, KubeletComponent},
+		{"generic namespace and port", "openshift-kube-apiserver", 6443, GenericComponent},
+		{"empty namespace", "", 443, GenericComponent},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ComponentTypeFromPod(tt.namespace, tt.port)
+			if got != tt.want {
+				t.Errorf("ComponentTypeFromPod(%q, %d) = %v, want %v", tt.namespace, tt.port, got, tt.want)
 			}
 		})
 	}
