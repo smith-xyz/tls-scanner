@@ -1,8 +1,6 @@
 package scanner
 
 import (
-	"strings"
-
 	"github.com/openshift/tls-scanner/internal/k8s"
 )
 
@@ -14,23 +12,13 @@ const (
 	// GenericComponent covers all components that have no override capability —
 	// they must honor the cluster-wide APIServer TLS profile.
 	GenericComponent ComponentType = iota
-	// IngressComponent covers pods in the openshift-ingress namespace, which
-	// may carry an IngressController-specific TLS profile override.
+	// IngressComponent covers ports whose effective TLS profile is the
+	// IngressController profile (with APIServer fallback when no override is set).
 	IngressComponent
-	// KubeletComponent covers kubelet ports (10250/10255), which may carry a
-	// KubeletConfig-specific TLS profile override.
+	// KubeletComponent covers ports whose effective TLS profile is the
+	// KubeletConfig profile (with APIServer fallback when no override is set).
 	KubeletComponent
 )
-
-func ComponentTypeFromPod(namespace string, port int) ComponentType {
-	if strings.EqualFold(namespace, "openshift-ingress") {
-		return IngressComponent
-	}
-	if port == 10250 || port == 10255 {
-		return KubeletComponent
-	}
-	return GenericComponent
-}
 
 func getMinVersionValue(versions []string) int {
 	if len(versions) == 0 {

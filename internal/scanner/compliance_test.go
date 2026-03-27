@@ -397,27 +397,3 @@ func TestHasComplianceFailures(t *testing.T) {
 		})
 	}
 }
-
-func TestComponentTypeFromPod(t *testing.T) {
-	tests := []struct {
-		name      string
-		namespace string
-		port      int
-		want      ComponentType
-	}{
-		{"openshift-ingress namespace", "openshift-ingress", 443, IngressComponent},
-		{"kubelet port 10250", "", 10250, KubeletComponent},
-		{"kubelet port 10255", "", 10255, KubeletComponent},
-		{"generic namespace and port", "openshift-kube-apiserver", 6443, GenericComponent},
-		{"empty namespace", "", 443, GenericComponent},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ComponentTypeFromPod(tt.namespace, tt.port)
-			if got != tt.want {
-				t.Errorf("ComponentTypeFromPod(%q, %d) = %v, want %v", tt.namespace, tt.port, got, tt.want)
-			}
-		})
-	}
-}

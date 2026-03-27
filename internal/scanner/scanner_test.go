@@ -71,7 +71,7 @@ func TestScanWithMockTestSSL(t *testing.T) {
 		{IP: "10.0.0.1", Port: 443},
 		{IP: "10.0.0.2", Port: 8443},
 	}
-	results := Scan(jobs, 2, nil, nil)
+	results := Scan(jobs, 2, nil, nil, Policy())
 
 	if results.ScannedIPs != 2 {
 		t.Fatalf("expected 2 scanned IPs, got %d", results.ScannedIPs)
@@ -95,7 +95,7 @@ func TestScanPQCEnrichment(t *testing.T) {
 	installMockTestSSL(t)
 
 	jobs := []ScanJob{{IP: "10.0.0.1", Port: 443}}
-	results := Scan(jobs, 1, nil, nil)
+	results := Scan(jobs, 1, nil, nil, Policy())
 
 	pr := results.IPResults[0].PortResults[0]
 
@@ -128,7 +128,7 @@ func TestPerformClusterScanWithMockPods(t *testing.T) {
 		makePod("no-ports", "openshift-console", "10.128.0.30"),
 	}
 
-	results := PerformClusterScan(pods, 2, nil)
+	results := PerformClusterScan(pods, 2, nil, Policy())
 
 	if results.ScannedIPs != 3 {
 		t.Errorf("expected 3 scanned IPs (including no-ports), got %d", results.ScannedIPs)

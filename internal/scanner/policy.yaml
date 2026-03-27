@@ -1,0 +1,27 @@
+# Default TLS component policy.
+#
+# Rules are evaluated top-to-bottom; the first matching rule wins.
+# A component with no matching rule uses the cluster-wide APIServer TLS profile.
+#
+# Available profiles:
+#   apiserver  - cluster-wide APIServer TLS profile (default for all components)
+#   ingress    - IngressController TLS profile (falls back to APIServer if no override is set)
+#   kubelet    - KubeletConfig TLS profile    (falls back to APIServer if no override is set)
+#
+# Matching fields (all optional; omitting a field matches any value):
+#   namespace:  Kubernetes pod namespace
+#   process:    Process name as discovered from /proc (e.g. "kubelet")
+#   port:       Listening port number
+#   component:  OpenShift component name derived from image metadata
+#
+# Example custom rule (add below the defaults to extend or override):
+#   - namespace: my-namespace
+#     process: my-server
+#     profile: apiserver
+rules:
+  - namespace: openshift-ingress
+    profile: ingress
+  - port: 10250
+    profile: kubelet
+  - port: 10255
+    profile: kubelet
