@@ -41,6 +41,68 @@ func TestPolicyRuleValidation(t *testing.T) {
 	})
 }
 
+func TestPolicyRuleShadowing(t *testing.T) {
+	compiled := func(r PolicyRule) PolicyRule {
+		if err := r.compile(); err != nil {
+			panic(err)
+		}
+		return r
+	}
+
+	tests := []struct {
+		name   string
+		r1     PolicyRule
+		r2     PolicyRule
+		shadow bool
+	}{
+		{
+			name:   "broader process rule shadows narrower process+port rule",
+			r1:     compiled(PolicyRule{Process: "kubelet", Profile: ProfileKubelet}),
+			r2:     compiled(PolicyRule{Process: "kubelet", Port: intPtr(10250), Profile: ProfileKubelet}),
+			shadow: true,
+		},
+		{
+			name:   "identical rules shadow each other",
+			r1:     compiled(PolicyRule{Namespace: "openshift-ingress", Profile: ProfileIngress}),
+			r2:     compiled(PolicyRule{Namespace: "openshift-ingress", Profile: ProfileIngress}),
+			shadow: true,
+		},
+		{
+			name:   "broader namespace regex shadows literal namespace",
+			r1:     compiled(PolicyRule{Namespace: "openshift-.*", Profile: ProfileIngress}),
+			r2:     compiled(PolicyRule{Namespace: "openshift-ingress", Profile: ProfileIngress}),
+			shadow: true,
+		},
+		{
+			name:   "different dimensions do not shadow",
+			r1:     compiled(PolicyRule{Namespace: "openshift-ingress", Profile: ProfileIngress}),
+			r2:     compiled(PolicyRule{Process: "kubelet", Profile: ProfileKubelet}),
+			shadow: false,
+		},
+		{
+			name:   "more specific rule does not shadow broader rule",
+			r1:     compiled(PolicyRule{Process: "kubelet", Port: intPtr(10250), Profile: ProfileKubelet}),
+			r2:     compiled(PolicyRule{Process: "kubelet", Profile: ProfileKubelet}),
+			shadow: false,
+		},
+		{
+			name:   "different namespace patterns do not shadow",
+			r1:     compiled(PolicyRule{Namespace: "openshift-ingress", Profile: ProfileIngress}),
+			r2:     compiled(PolicyRule{Namespace: "openshift-etcd", Profile: ProfileIngress}),
+			shadow: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.r1.shadows(&tt.r2)
+			if got != tt.shadow {
+				t.Errorf("shadows() = %v, want %v", got, tt.shadow)
+			}
+		})
+	}
+}
+
 func TestPolicy(t *testing.T) {
 	p := Policy()
 	if p == nil {

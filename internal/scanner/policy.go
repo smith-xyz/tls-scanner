@@ -3,6 +3,7 @@ package scanner
 import (
 	_ "embed"
 	"fmt"
+	"log"
 	"regexp"
 
 	"gopkg.in/yaml.v3"
@@ -63,7 +64,85 @@ func Policy() *ComponentPolicy {
 			panic(fmt.Sprintf("policy rule %d: %v", i, err))
 		}
 	}
+	p.warnShadowedRules()
 	return &p
+}
+
+// warnShadowedRules logs a warning for each rule that can never be reached
+// because an earlier, broader rule will always match first.
+func (p *ComponentPolicy) warnShadowedRules() {
+	for i := 0; i < len(p.Rules); i++ {
+		for j := i + 1; j < len(p.Rules); j++ {
+			if p.Rules[i].shadows(&p.Rules[j]) {
+				log.Printf("Warning: policy rule %d (%s) shadows rule %d (%s) — rule %d will never be reached. "+
+					"Check policy.yaml and move more-specific rules before broader ones.",
+					i, p.Rules[i].description(),
+					j, p.Rules[j].description(),
+					j)
+			}
+		}
+	}
+}
+
+// shadows reports whether r will always match before other, making other
+// unreachable. r shadows other when r's constraints are a superset of
+// other's — i.e. r is less specific (or equally specific) in every dimension.
+func (r *PolicyRule) shadows(other *PolicyRule) bool {
+	// For each dimension: if other has no constraint, r must also have none
+	// (otherwise r is more specific and won't match everything other matches).
+	// If other has a constraint, r must either have no constraint (wildcard)
+	// or a pattern that covers other's literal value.
+	if other.namespaceRe == nil {
+		if r.namespaceRe != nil {
+			return false
+		}
+	} else if r.namespaceRe != nil && !r.namespaceRe.MatchString(other.Namespace) {
+		return false
+	}
+
+	if other.processRe == nil {
+		if r.processRe != nil {
+			return false
+		}
+	} else if r.processRe != nil && !r.processRe.MatchString(other.Process) {
+		return false
+	}
+
+	if other.componentRe == nil {
+		if r.componentRe != nil {
+			return false
+		}
+	} else if r.componentRe != nil && !r.componentRe.MatchString(other.Component) {
+		return false
+	}
+
+	if other.Port == nil {
+		if r.Port != nil {
+			return false
+		}
+	} else if r.Port != nil && *r.Port != *other.Port {
+		return false
+	}
+
+	return true
+}
+
+// description returns a short human-readable summary of the rule's matchers.
+func (r *PolicyRule) description() string {
+	s := string(r.Profile) + " {"
+	if r.Namespace != "" {
+		s += "namespace:" + r.Namespace + " "
+	}
+	if r.Process != "" {
+		s += "process:" + r.Process + " "
+	}
+	if r.Component != "" {
+		s += "component:" + r.Component + " "
+	}
+	if r.Port != nil {
+		s += fmt.Sprintf("port:%d ", *r.Port)
+	}
+	return s + "}"
 }
 
 // compile validates and pre-compiles the rule. It checks that:
