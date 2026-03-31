@@ -4,6 +4,43 @@ import (
 	"testing"
 )
 
+func TestPolicyRuleValidation(t *testing.T) {
+	t.Run("missing profile = error", func(t *testing.T) {
+		r := PolicyRule{Namespace: "openshift-ingress"}
+		if err := r.compile(); err == nil {
+			t.Error("expected error for missing profile, got nil")
+		}
+	})
+
+	t.Run("unknown profile = error", func(t *testing.T) {
+		r := PolicyRule{Namespace: "openshift-ingress", Profile: "unknown"}
+		if err := r.compile(); err == nil {
+			t.Error("expected error for unknown profile, got nil")
+		}
+	})
+
+	t.Run("no matchers = error", func(t *testing.T) {
+		r := PolicyRule{Profile: ProfileIngress}
+		if err := r.compile(); err == nil {
+			t.Error("expected error for rule with no matchers, got nil")
+		}
+	})
+
+	t.Run("port-only matcher is valid", func(t *testing.T) {
+		r := PolicyRule{Port: intPtr(10250), Profile: ProfileKubelet}
+		if err := r.compile(); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("invalid regex = error", func(t *testing.T) {
+		r := PolicyRule{Namespace: "[invalid", Profile: ProfileIngress}
+		if err := r.compile(); err == nil {
+			t.Error("expected error for invalid regex, got nil")
+		}
+	})
+}
+
 func TestPolicy(t *testing.T) {
 	p := Policy()
 	if p == nil {
@@ -105,9 +142,9 @@ func TestPolicyResolve(t *testing.T) {
 			want:  GenericComponent,
 		},
 		{
-			name:  "empty rule (all wildcards) matches everything",
-			rules: []PolicyRule{{Profile: ProfileKubelet}},
-			port:  1234,
+			name:  "port-only rule matches any namespace/process",
+			rules: []PolicyRule{{Port: intPtr(9999), Profile: ProfileKubelet}},
+			port:  9999,
 			want:  KubeletComponent,
 		},
 		{

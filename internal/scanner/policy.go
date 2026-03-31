@@ -66,10 +66,27 @@ func Policy() *ComponentPolicy {
 	return &p
 }
 
-// compile pre-compiles the regex patterns in the rule. Patterns are implicitly
-// anchored so "openshift-ingress" matches that exact string, while
-// "openshift-.*" matches any string with that prefix.
+// compile validates and pre-compiles the rule. It checks that:
+//   - profile is a known value
+//   - at least one matcher field is set (a rule with no matchers would
+//     silently swallow all subsequent rules)
+//   - all string matcher fields are valid Go regexes
+//
+// Patterns are implicitly anchored so "openshift-ingress" matches that exact
+// string, while "openshift-.*" matches any string with that prefix.
 func (r *PolicyRule) compile() error {
+	switch r.Profile {
+	case ProfileAPIServer, ProfileIngress, ProfileKubelet:
+	case "":
+		return fmt.Errorf("profile must be set (valid values: apiserver, ingress, kubelet)")
+	default:
+		return fmt.Errorf("unknown profile %q (valid values: apiserver, ingress, kubelet)", r.Profile)
+	}
+
+	if r.Namespace == "" && r.Process == "" && r.Component == "" && r.Port == nil {
+		return fmt.Errorf("at least one matcher field (namespace, process, port, component) must be set")
+	}
+
 	var err error
 	if r.Namespace != "" {
 		if r.namespaceRe, err = regexp.Compile("^(?:" + r.Namespace + ")$"); err != nil {
