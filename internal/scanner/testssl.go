@@ -6,7 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
+
+	"github.com/openshift/tls-scanner/internal/stringutil"
 )
 
 func IsTestSSLInstalled() bool {
@@ -250,7 +253,7 @@ func ExtractKeyExchangeFromTestSSL(jsonData []byte) *KeyExchangeInfo {
 			parts := strings.Fields(findingValue)
 			for _, p := range parts {
 				p = strings.TrimSpace(p)
-				if p != "" && !stringInSlice(p, ecdheCiphers) {
+				if p != "" && !slices.Contains(ecdheCiphers, p) {
 					ecdheCiphers = append(ecdheCiphers, p)
 				}
 			}
@@ -259,7 +262,7 @@ func ExtractKeyExchangeFromTestSSL(jsonData []byte) *KeyExchangeInfo {
 			parts := strings.Fields(findingValue)
 			for _, p := range parts {
 				p = strings.TrimSpace(p)
-				if p != "" && !stringInSlice(p, kemGroups) {
+				if p != "" && !slices.Contains(kemGroups, p) {
 					kemGroups = append(kemGroups, p)
 				}
 			}
@@ -268,9 +271,9 @@ func ExtractKeyExchangeFromTestSSL(jsonData []byte) *KeyExchangeInfo {
 			parts := strings.Fields(findingValue)
 			for _, p := range parts {
 				p = strings.TrimSpace(p)
-				if p != "" && !stringInSlice(p, allGroups) {
+				if p != "" && !slices.Contains(allGroups, p) {
 					allGroups = append(allGroups, p)
-					if IsKEMGroup(p) && !stringInSlice(p, kemGroups) {
+					if IsKEMGroup(p) && !slices.Contains(kemGroups, p) {
 						kemGroups = append(kemGroups, p)
 					}
 				}
@@ -280,10 +283,10 @@ func ExtractKeyExchangeFromTestSSL(jsonData []byte) *KeyExchangeInfo {
 			groupName := strings.TrimPrefix(id, "group_")
 			groupName = strings.TrimPrefix(groupName, "curve_")
 			if findingValue == "offered" || findingValue == "yes" || strings.Contains(strings.ToLower(findingValue), "supported") {
-				if !stringInSlice(groupName, allGroups) {
+				if !slices.Contains(allGroups, groupName) {
 					allGroups = append(allGroups, groupName)
 				}
-				if IsKEMGroup(groupName) && !stringInSlice(groupName, kemGroups) {
+				if IsKEMGroup(groupName) && !slices.Contains(kemGroups, groupName) {
 					kemGroups = append(kemGroups, groupName)
 				}
 			}
@@ -409,7 +412,7 @@ func ExtractCiphersFromTestSSL(jsonData []byte) []string {
 			continue
 		}
 		cipher = matches[1]
-		if !stringInSlice(cipher, ciphers) {
+		if !slices.Contains(ciphers, cipher) {
 			ciphers = append(ciphers, cipher)
 		}
 	}
@@ -435,5 +438,5 @@ func ExtractTLSInfo(scanRun ScanRun) []string {
 		}
 	}
 
-	return removeDuplicates(tlsVersions)
+	return stringutil.RemoveDuplicates(tlsVersions)
 }
