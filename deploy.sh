@@ -40,7 +40,7 @@ SCAN_MODE=${SCAN_MODE:-"pod"}
 JOB_NAME="tls-scanner-job"
 LIMIT_IPS="${LIMIT_IPS:-0}"  # Limit number of IPs to scan (0 = no limit, useful for testing)
 # Architectures to build container images for
-BUILD_PLATFORMS="linux/amd64,linux/arm64,linux/s390x,linux/ppc64le"
+BUILD_PLATFORMS="${BUILD_PLATFORMS:-linux/amd64,linux/arm64,linux/s390x,linux/ppc64le}"
 
 # TLS test configuration
 TLS_TEST_TIMEOUT=${TLS_TEST_TIMEOUT:-600}  # 10 minutes default, configurable
