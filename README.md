@@ -27,6 +27,7 @@ Set these environment variables in your CI job:
 - `KUBECONFIG`: Path to the kubeconfig file for the ephemeral test cluster.
 - `JOB_TEMPLATE_FILE`: (Optional) Path to the Job manifest template used by `deploy.sh deploy` (default: `scanner-job.yaml.template`). For host-based scanning, use a template that runs with host network access (e.g. `scanner-job-microshift.yaml.template`).
 - `SCAN_MODE`: (Optional) `pod` (default) or `host`. **Pod mode** discovers pods in the cluster and scans their TLS ports. **Host mode** is for environments where core components (API server, etcd, kubelet) run on the host rather than in pods—e.g. single-node or edge setups such as MicroShift. Use a job template with `hostNetwork: true` and set `SCAN_MODE=host` so the scanner runs on the host and can reach those services.
+- `BUILD_PLATFORM` (Optional) The architecture(s) to build for.
 
 #### 2. Build and Push the Image
 
