@@ -10,6 +10,7 @@ import (
 
 	"github.com/openshift/tls-scanner/internal/k8s"
 	"github.com/openshift/tls-scanner/internal/scanner"
+	"github.com/openshift/tls-scanner/internal/stringutil"
 )
 
 func TestWriteCSVOutput(t *testing.T) {
@@ -149,7 +150,7 @@ func TestCSVHelpers(t *testing.T) {
 		t.Fatalf("expected No, got %q", got)
 	}
 
-	dupes := removeDuplicates([]string{"a", "a", "", "b"})
+	dupes := stringutil.RemoveDuplicates([]string{"a", "a", "", "b"})
 	if !reflect.DeepEqual(dupes, []string{"a", "b"}) {
 		t.Fatalf("unexpected dedupe result: %#v", dupes)
 	}

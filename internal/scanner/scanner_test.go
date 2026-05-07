@@ -180,10 +180,10 @@ func TestGetMinVersionValue(t *testing.T) {
 
 func TestStringInSlice(t *testing.T) {
 	t.Parallel()
-	if !stringInSlice("b", []string{"a", "b", "c"}) {
+	if !slices.Contains([]string{"a", "b", "c"}, "b") {
 		t.Fatal("expected to find value in slice")
 	}
-	if stringInSlice("z", []string{"a", "b", "c"}) {
+	if slices.Contains([]string{"a", "b", "c"}, "z") {
 		t.Fatal("expected value not to be present")
 	}
 }

@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/openshift/tls-scanner/internal/scanner"
+	"github.com/openshift/tls-scanner/internal/stringutil"
 )
 
 var csvColumns = []string{
@@ -46,7 +48,7 @@ func WriteCSVOutput(results scanner.ScanResults, filename string) error {
 		if results.TLSSecurityConfig.IngressController != nil {
 			ingressProfile = stringOrNA(results.TLSSecurityConfig.IngressController.Type)
 			ingressMinVersion = stringOrNA(results.TLSSecurityConfig.IngressController.MinTLSVersion)
-			ingressCiphers = joinOrNA(removeDuplicates(results.TLSSecurityConfig.IngressController.Ciphers))
+			ingressCiphers = joinOrNA(stringutil.RemoveDuplicates(results.TLSSecurityConfig.IngressController.Ciphers))
 		} else {
 			ingressProfile = "N/A"
 			ingressMinVersion = "N/A"
@@ -55,7 +57,7 @@ func WriteCSVOutput(results scanner.ScanResults, filename string) error {
 		if results.TLSSecurityConfig.APIServer != nil {
 			apiProfile = stringOrNA(results.TLSSecurityConfig.APIServer.Type)
 			apiMinVersion = stringOrNA(results.TLSSecurityConfig.APIServer.MinTLSVersion)
-			apiCiphers = joinOrNA(removeDuplicates(results.TLSSecurityConfig.APIServer.Ciphers))
+			apiCiphers = joinOrNA(stringutil.RemoveDuplicates(results.TLSSecurityConfig.APIServer.Ciphers))
 		} else {
 			apiProfile = "N/A"
 			apiMinVersion = "N/A"
@@ -63,7 +65,7 @@ func WriteCSVOutput(results scanner.ScanResults, filename string) error {
 		}
 		if results.TLSSecurityConfig.KubeletConfig != nil {
 			kubeletMinVersion = stringOrNA(results.TLSSecurityConfig.KubeletConfig.MinTLSVersion)
-			kubeletCiphers = joinOrNA(removeDuplicates(results.TLSSecurityConfig.KubeletConfig.TLSCipherSuites))
+			kubeletCiphers = joinOrNA(stringutil.RemoveDuplicates(results.TLSSecurityConfig.KubeletConfig.TLSCipherSuites))
 		} else {
 			kubeletMinVersion = "N/A"
 			kubeletCiphers = "N/A"
@@ -109,7 +111,7 @@ func WriteCSVOutput(results scanner.ScanResults, filename string) error {
 				allGroups := append([]string{}, portResult.TlsKeyExchange.Groups...)
 				if portResult.TlsKeyExchange.ForwardSecrecy != nil {
 					for _, kem := range portResult.TlsKeyExchange.ForwardSecrecy.KEMs {
-						if !stringInSlice(kem, allGroups) {
+						if !slices.Contains(allGroups, kem) {
 							allGroups = append(allGroups, kem)
 						}
 					}
@@ -255,18 +257,6 @@ func joinOrNA(slice []string) string {
 	return strings.Join(slice, ", ")
 }
 
-func removeDuplicates(slice []string) []string {
-	keys := make(map[string]bool)
-	var result []string
-	for _, item := range slice {
-		if !keys[item] && item != "" {
-			keys[item] = true
-			result = append(result, item)
-		}
-	}
-	return result
-}
-
 func boolToYesNo(b bool) string {
 	if b {
 		return "Yes"
@@ -274,11 +264,3 @@ func boolToYesNo(b bool) string {
 	return "No"
 }
 
-func stringInSlice(s string, list []string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}

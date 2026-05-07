@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"log"
+	"slices"
 )
 
 type PortFilter func(status ScanStatus) bool
@@ -18,7 +19,7 @@ var (
 )
 
 func PopulatePQCFields(pr *PortResult) {
-	pr.TLS13Supported = stringInSlice("TLSv1.3", pr.TlsVersions)
+	pr.TLS13Supported = slices.Contains(pr.TlsVersions, "TLSv1.3")
 
 	if pr.TlsKeyExchange == nil {
 		populateTLSReadiness(pr)
