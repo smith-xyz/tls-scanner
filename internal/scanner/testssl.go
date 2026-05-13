@@ -2,7 +2,7 @@ package scanner
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
@@ -21,7 +21,7 @@ func ParseTestSSLOutput(jsonData []byte, host, port string) ScanRun {
 	var rawData []map[string]interface{}
 
 	if err := json.Unmarshal(jsonData, &rawData); err != nil {
-		log.Printf("Error parsing testssl.sh JSON output: %v", err)
+		slog.Error("parsing testssl.sh JSON output", "error", err)
 		return ScanRun{Hosts: []Host{{
 			Ports: []Port{{
 				PortID:   port,
@@ -222,7 +222,7 @@ func mapSeverityToStrength(severity string) string {
 func ExtractKeyExchangeFromTestSSL(jsonData []byte) *KeyExchangeInfo {
 	var rawData []map[string]interface{}
 	if err := json.Unmarshal(jsonData, &rawData); err != nil {
-		log.Printf("Error parsing testssl.sh JSON for key exchange: %v", err)
+		slog.Error("parsing testssl.sh JSON for key exchange", "error", err)
 		return nil
 	}
 
@@ -339,7 +339,7 @@ func GroupTestSSLOutputByPort(jsonData []byte) (map[string][]map[string]interfac
 func ParseTestSSLOutputFromFile(filename, host, port string) ScanRun {
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		log.Printf("Error reading testssl output file %s: %v", filename, err)
+		slog.Error("reading testssl output file", "path", filename, "error", err)
 		return ScanRun{Hosts: []Host{{
 			Ports: []Port{{
 				PortID:   port,
@@ -382,7 +382,7 @@ func GroupTestSSLOutputByIPPort(jsonData []byte) (map[string][]map[string]interf
 func ExtractCiphersFromTestSSL(jsonData []byte) []string {
 	var rawData []map[string]interface{}
 	if err := json.Unmarshal(jsonData, &rawData); err != nil {
-		log.Printf("Error parsing testssl.sh JSON for ciphers: %v", err)
+		slog.Error("parsing testssl.sh JSON for ciphers", "error", err)
 		return nil
 	}
 
@@ -408,7 +408,7 @@ func ExtractCiphersFromTestSSL(jsonData []byte) []string {
 		// find the cipher by retrieving the third item
 		matches := r.FindStringSubmatch(cipher)
 		if len(matches) < 2 {
-			log.Printf("Expected a ciper in %q, did not find any", cipher)
+			slog.Warn("expected a cipher in finding, did not find any", "finding", cipher)
 			continue
 		}
 		cipher = matches[1]

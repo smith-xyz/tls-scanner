@@ -3,7 +3,7 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -11,15 +11,15 @@ import (
 )
 
 func (c *Client) GetOpenshiftComponentFromImage(image string) (*OpenshiftComponent, error) {
-	log.Printf("Analyzing OpenShift image: %s", image)
+	slog.Debug("analyzing openshift image", "image", image)
 
 	component := c.parseOpenshiftComponentFromImageRef(image)
 	if component != nil {
-		log.Printf("Successfully parsed component info from image: %s -> %s", image, component.Component)
+		slog.Debug("parsed component info from image", "image", image, "component", component.Component)
 		return component, nil
 	}
 
-	log.Printf("Attempting to gather component info from cluster metadata for: %s", image)
+	slog.Debug("gathering component info from cluster metadata", "image", image)
 	return c.getComponentFromClusterMetadata(image)
 }
 
@@ -69,7 +69,7 @@ func (c *Client) parseOpenshiftComponentFromImageRef(image string) *OpenshiftCom
 }
 
 func (c *Client) getComponentFromClusterMetadata(image string) (*OpenshiftComponent, error) {
-	log.Printf("Searching cluster for pods using image: %s", image)
+	slog.Debug("searching cluster for pods using image", "image", image)
 
 	pods, err := c.clientset.CoreV1().Pods("").List(context.Background(), metav1.ListOptions{})
 	if err != nil {

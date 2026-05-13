@@ -3,7 +3,7 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	configv1 "github.com/openshift/api/config/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,7 +17,7 @@ var (
 )
 
 func (c *Client) GetTLSSecurityProfile() (*TLSSecurityProfile, error) {
-	log.Printf("Collecting TLS security profiles from OpenShift components...")
+	slog.Info("Collecting TLS security profiles from OpenShift components...")
 
 	profile := &TLSSecurityProfile{}
 
@@ -25,7 +25,7 @@ func (c *Client) GetTLSSecurityProfile() (*TLSSecurityProfile, error) {
 	// Kubelet inherit when no component-specific override is configured.
 	apiserver, err := c.configClient.ConfigV1().APIServers().Get(context.Background(), "cluster", metav1.GetOptions{})
 	if err != nil {
-		log.Printf("Warning: Could not get API Server custom resource: %v", err)
+		slog.Warn("could not get API Server custom resource", "error", err)
 		profile.TLSAdherence = configv1.TLSAdherencePolicyNoOpinion
 	} else {
 		profile.APIServer = extractAPIServerTLS(apiserver)
@@ -33,13 +33,13 @@ func (c *Client) GetTLSSecurityProfile() (*TLSSecurityProfile, error) {
 	}
 
 	if ingressTLS, err := c.getIngressControllerTLS(profile.APIServer); err != nil {
-		log.Printf("Warning: Could not get Ingress Controller TLS config: %v", err)
+		slog.Warn("could not get Ingress Controller TLS config", "error", err)
 	} else {
 		profile.IngressController = ingressTLS
 	}
 
 	if kubeletTLS, err := c.getKubeletTLS(profile.APIServer); err != nil {
-		log.Printf("Warning: Could not get Kubelet TLS config: %v", err)
+		slog.Warn("could not get Kubelet TLS config", "error", err)
 	} else {
 		profile.KubeletConfig = kubeletTLS
 	}

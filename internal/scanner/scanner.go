@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -50,7 +50,7 @@ func PerformClusterScan(pods []k8s.PodInfo, concurrentScans int, client *k8s.Cli
 	var tlsConfig *k8s.TLSSecurityProfile
 	if client != nil {
 		if config, err := client.GetTLSSecurityProfile(); err != nil {
-			log.Printf("Warning: Could not collect TLS security profiles: %v", err)
+			slog.Warn("could not collect TLS security profiles", "error", err)
 		} else {
 			tlsConfig = config
 		}
@@ -68,7 +68,7 @@ func PerformClusterScan(pods []k8s.PodInfo, concurrentScans int, client *k8s.Cli
 		go func(workerID int) {
 			defer discoveryWG.Done()
 			for pod := range discoveryChan {
-				log.Printf("DISCOVERY %d: Processing pod %s/%s", workerID, pod.Namespace, pod.Name)
+				slog.Debug("discovery processing pod", "worker", workerID, "namespace", pod.Namespace, "pod", pod.Name)
 				progress.PodDiscovered()
 
 				var component *k8s.OpenshiftComponent
@@ -83,7 +83,7 @@ func PerformClusterScan(pods []k8s.PodInfo, concurrentScans int, client *k8s.Cli
 				var err error
 				procPorts, err = client.DiscoverPortsFromProc(pod)
 				if err != nil {
-					log.Printf("Warning: /proc port discovery failed for %s/%s: %v", pod.Namespace, pod.Name, err)
+					slog.Warn("/proc port discovery failed", "namespace", pod.Namespace, "pod", pod.Name, "error", err)
 				} else {
 					procAvailable = true
 				}
@@ -113,8 +113,11 @@ func PerformClusterScan(pods []k8s.PodInfo, concurrentScans int, client *k8s.Cli
 			// Identify plaintext probe ports up front so we can skip them below.
 			probePorts := k8s.GetPlaintextProbePorts(pod.Pod)
 
-			log.Printf("DISCOVERY %d: %s/%s hostNet=%v spec=%v proc=%v open=%v probePorts=%v (%d ports)",
-				workerID, pod.Namespace, pod.Name, pod.Pod.Spec.HostNetwork, specPorts, procPorts, openPorts, probePorts, len(openPorts))
+			slog.Debug("discovery result",
+				"worker", workerID, "namespace", pod.Namespace, "pod", pod.Name,
+				"hostNetwork", pod.Pod.Spec.HostNetwork, "specPorts", specPorts,
+				"procPorts", procPorts, "openPorts", openPorts,
+				"probePorts", probePorts, "portCount", len(openPorts))
 
 				for _, ip := range pod.IPs {
 					if len(openPorts) == 0 {
@@ -137,7 +140,7 @@ func PerformClusterScan(pods []k8s.PodInfo, concurrentScans int, client *k8s.Cli
 					for _, port := range openPorts {
 						if client != nil {
 							if isLocalhost, listenAddr := client.IsLocalhostOnly(ip, port); isLocalhost {
-								log.Printf("Port %d on %s is bound to localhost only (%s), skipping", port, ip, listenAddr)
+								slog.Debug("port bound to localhost only, skipping", "port", port, "ip", ip, "listenAddr", listenAddr)
 								pr := PortResult{
 									Port:          port,
 									Protocol:      "tcp",
@@ -161,7 +164,7 @@ func PerformClusterScan(pods []k8s.PodInfo, concurrentScans int, client *k8s.Cli
 						}
 
 						if probePorts[port] {
-							log.Printf("Port %d on %s is a plaintext health probe endpoint, skipping TLS scan", port, ip)
+							slog.Debug("plaintext health probe endpoint, skipping TLS scan", "port", port, "ip", ip)
 							pr := PortResult{
 								Port:     port,
 								Protocol: "tcp",
@@ -280,23 +283,23 @@ func batchScan(jobs []ScanJob, concurrentScans int, client *k8s.Client, tlsConfi
 
 	targetsFile, err := writeTargetsFile(targets)
 	if err != nil {
-		log.Printf("Failed to create targets file: %v", err)
+		slog.Error("failed to create targets file", "error", err)
 		return nil
 	}
 	defer os.Remove(targetsFile)
 
 	outputFile, err := os.CreateTemp("", "testssl-batch-*.json")
 	if err != nil {
-		log.Printf("Failed to create output file: %v", err)
+		slog.Error("failed to create output file", "error", err)
 		return nil
 	}
 	outputFileName := outputFile.Name()
 	outputFile.Close()
 	defer os.Remove(outputFileName)
 
-	log.Printf("Running testssl.sh --file batch scan on %d targets (MAX_PARALLEL=%d)", len(targets), concurrentScans)
+	slog.Info("running testssl.sh batch scan", "targets", len(targets), "maxParallel", concurrentScans)
 	timeout := time.Duration(len(targets)*90+120) * time.Second
-	log.Printf("Batch timeout: %v", timeout)
+	slog.Debug("batch timeout set", "timeout", timeout)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -318,21 +321,21 @@ func batchScan(jobs []ScanJob, concurrentScans int, client *k8s.Client, tlsConfi
 
 	if cmdErr != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			log.Printf("ERROR: testssl.sh batch TIMED OUT after %v (%d targets). Partial results may be available.", timeout, len(targets))
+			slog.Error("testssl.sh batch timed out, partial results may be available", "timeout", timeout, "targets", len(targets))
 		} else {
-			log.Printf("testssl.sh batch exited non-zero: %v", cmdErr)
+			slog.Warn("testssl.sh batch exited non-zero", "error", cmdErr)
 		}
 	}
 
 	jsonData, readErr := os.ReadFile(outputFileName)
 	if readErr != nil || len(jsonData) == 0 {
-		log.Printf("testssl.sh batch produced no output: %v", readErr)
+		slog.Error("testssl.sh batch produced no output", "error", readErr)
 		return nil
 	}
 
 	grouped, groupErr := GroupTestSSLOutputByIPPort(jsonData)
 	if groupErr != nil {
-		log.Printf("Error grouping testssl.sh output: %v", groupErr)
+		slog.Error("grouping testssl.sh output", "error", groupErr)
 		return nil
 	}
 
@@ -341,7 +344,7 @@ func batchScan(jobs []ScanJob, concurrentScans int, client *k8s.Client, tlsConfi
 	for key, findings := range grouped {
 		job, ok := jobIndex[key]
 		if !ok {
-			log.Printf("Warning: testssl returned results for unknown target %s", key)
+			slog.Warn("testssl returned results for unknown target", "target", key)
 			continue
 		}
 		delete(jobIndex, key)
@@ -399,7 +402,7 @@ func batchScan(jobs []ScanJob, concurrentScans int, client *k8s.Client, tlsConfi
 	}
 
 	for key, job := range jobIndex {
-		log.Printf("Warning: no testssl results for %s", key)
+		slog.Warn("no testssl results for target", "target", key)
 		results = append(results, portScanResult{
 			ip: job.IP, pod: job.Pod, component: job.Component,
 			result: PortResult{

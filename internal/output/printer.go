@@ -2,7 +2,7 @@ package output
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/openshift/tls-scanner/internal/scanner"
@@ -79,7 +79,7 @@ func PrintClusterResults(results scanner.ScanResults) {
 
 func PrintParsedResults(results scanner.ScanResults) {
 	if len(results.IPResults) == 0 {
-		log.Println("No hosts were scanned or host is down.")
+		slog.Warn("No hosts were scanned or host is down.")
 		return
 	}
 

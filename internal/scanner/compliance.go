@@ -1,7 +1,7 @@
 package scanner
 
 import (
-	"log"
+	"log/slog"
 
 	"github.com/openshift/tls-scanner/internal/k8s"
 )
@@ -114,7 +114,7 @@ func checkCipherCompliance(gotCiphers []string, expectedCiphers []string) bool {
 			converted = cipher
 		}
 		if _, exists := expectedSet[converted]; !exists {
-			log.Printf("Warning: cipher %q (resolved as %q) not found in expected cipher set. cipher compliance will fail.", cipher, converted)
+			slog.Warn("cipher not found in expected cipher set, compliance will fail", "cipher", cipher, "resolved", converted)
 			return false
 		}
 	}

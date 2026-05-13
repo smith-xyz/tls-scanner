@@ -3,7 +3,7 @@ package output
 import (
 	"encoding/csv"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"slices"
 	"strconv"
@@ -24,7 +24,7 @@ var csvColumns = []string{
 }
 
 func WriteCSVOutput(results scanner.ScanResults, filename string) error {
-	log.Printf("Writing CSV output to: %s", filename)
+	slog.Info("writing CSV output", "path", filename)
 
 	file, err := os.Create(filename)
 	if err != nil {
@@ -191,11 +191,11 @@ func WriteCSVOutput(results scanner.ScanResults, filename string) error {
 
 func WriteScanErrorsCSV(results scanner.ScanResults, filename string) error {
 	if len(results.ScanErrors) == 0 {
-		log.Printf("No scan errors to write to CSV file")
+		slog.Info("No scan errors to write to CSV file")
 		return nil
 	}
 
-	log.Printf("Writing scan errors to: %s", filename)
+	slog.Info("writing scan errors", "path", filename)
 
 	file, err := os.Create(filename)
 	if err != nil {
@@ -227,7 +227,7 @@ func WriteScanErrorsCSV(results scanner.ScanResults, filename string) error {
 		}
 	}
 
-	log.Printf("Successfully wrote %d scan error rows to CSV file", len(results.ScanErrors))
+	slog.Info("scan error rows written to CSV", "count", len(results.ScanErrors))
 	return nil
 }
 

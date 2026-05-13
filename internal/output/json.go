@@ -3,7 +3,7 @@ package output
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,7 +24,7 @@ func WriteJSONOutput(data interface{}, filename string) error {
 		return fmt.Errorf("failed to encode JSON: %v", err)
 	}
 
-	log.Printf("JSON output written to: %s", filename)
+	slog.Info("JSON output written", "path", filename)
 	return nil
 }
 
@@ -36,7 +36,7 @@ func WriteOutputFiles(results scanner.ScanResults, artifactDir, jsonFile, csvFil
 	if err := os.MkdirAll(artifactDir, 0755); err != nil {
 		return fmt.Errorf("could not create artifact directory %s: %v", artifactDir, err)
 	}
-	log.Printf("Artifacts will be saved to: %s", artifactDir)
+	slog.Info("artifacts directory created", "path", artifactDir)
 
 	if jsonFile != "" {
 		jsonPath := jsonFile
@@ -44,9 +44,9 @@ func WriteOutputFiles(results scanner.ScanResults, artifactDir, jsonFile, csvFil
 			jsonPath = filepath.Join(artifactDir, jsonFile)
 		}
 		if err := WriteJSONOutput(results, jsonPath); err != nil {
-			log.Printf("Error writing JSON output: %v", err)
+			slog.Error("writing JSON output", "error", err)
 		} else {
-			log.Printf("JSON results written to: %s", jsonPath)
+			slog.Info("JSON results written", "path", jsonPath)
 		}
 	}
 
@@ -56,17 +56,17 @@ func WriteOutputFiles(results scanner.ScanResults, artifactDir, jsonFile, csvFil
 			csvPath = filepath.Join(artifactDir, csvFile)
 		}
 		if err := WriteCSVOutput(results, csvPath); err != nil {
-			log.Printf("Error writing CSV output: %v", err)
+			slog.Error("writing CSV output", "error", err)
 		} else {
-			log.Printf("CSV results written to: %s", csvPath)
+			slog.Info("CSV results written", "path", csvPath)
 		}
 
 		if len(results.ScanErrors) > 0 {
 			errorFilename := strings.TrimSuffix(csvPath, filepath.Ext(csvPath)) + "_errors.csv"
 			if err := WriteScanErrorsCSV(results, errorFilename); err != nil {
-				log.Printf("Error writing scan errors CSV: %v", err)
+				slog.Error("writing scan errors CSV", "error", err)
 			} else {
-				log.Printf("Scan errors written to: %s", errorFilename)
+				slog.Info("scan errors written", "path", errorFilename)
 			}
 		}
 	}
@@ -77,9 +77,9 @@ func WriteOutputFiles(results scanner.ScanResults, artifactDir, jsonFile, csvFil
 			junitPath = filepath.Join(artifactDir, junitFile)
 		}
 		if err := WriteJUnitOutput(results, junitPath, pqcCheck); err != nil {
-			log.Printf("Error writing JUnit XML output: %v", err)
+			slog.Error("writing JUnit XML output", "error", err)
 		} else {
-			log.Printf("JUnit XML results written to: %s", junitPath)
+			slog.Info("JUnit XML results written", "path", junitPath)
 		}
 	}
 

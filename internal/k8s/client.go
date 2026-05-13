@@ -3,7 +3,7 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -20,13 +20,13 @@ import (
 func NewClient() (*Client, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		log.Printf("Could not load in-cluster config, falling back to kubeconfig: %v", err)
+		slog.Warn("could not load in-cluster config, falling back to kubeconfig", "error", err)
 		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 		config, err = clientcmd.BuildConfigFromFlags("", loadingRules.GetDefaultFilename())
 		if err != nil {
 			return nil, fmt.Errorf("could not get kubernetes config: %v", err)
 		}
-		log.Println("Successfully created Kubernetes client from kubeconfig file")
+		slog.Info("Successfully created Kubernetes client from kubeconfig file")
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
@@ -75,7 +75,7 @@ func NewClient() (*Client, error) {
 }
 
 func (c *Client) GetAllPodsInfo() ([]PodInfo, error) {
-	log.Println("Getting all pods from the cluster...")
+	slog.Info("Getting all pods from the cluster...")
 	pods, err := c.clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("could not list pods: %w", err)
@@ -84,7 +84,7 @@ func (c *Client) GetAllPodsInfo() ([]PodInfo, error) {
 	var allPodsInfo []PodInfo
 	for _, pod := range pods.Items {
 		if pod.Status.PodIP == "" {
-			log.Printf("Skipping pod %s/%s: no IP address assigned (phase: %s)", pod.Namespace, pod.Name, pod.Status.Phase)
+			slog.Debug("skipping pod with no IP address", "namespace", pod.Namespace, "pod", pod.Name, "phase", pod.Status.Phase)
 			continue
 		}
 
@@ -108,7 +108,7 @@ func (c *Client) GetAllPodsInfo() ([]PodInfo, error) {
 		}
 		allPodsInfo = append(allPodsInfo, podInfo)
 	}
-	log.Printf("Found %d pods in the cluster (with IP addresses)", len(allPodsInfo))
+	slog.Info("pods found in cluster", "count", len(allPodsInfo))
 
 	totalIPs := 0
 	uniqueIPs := make(map[string]bool)
@@ -118,7 +118,7 @@ func (c *Client) GetAllPodsInfo() ([]PodInfo, error) {
 			uniqueIPs[ip] = true
 		}
 	}
-	log.Printf("IP discovery summary: %d total IPs across %d pods (%d unique IPs).", totalIPs, len(allPodsInfo), len(uniqueIPs))
+	slog.Info("IP discovery summary", "totalIPs", totalIPs, "pods", len(allPodsInfo), "uniqueIPs", len(uniqueIPs))
 
 	return allPodsInfo, nil
 }
@@ -128,7 +128,7 @@ func (c *Client) FilterPodsByComponent(pods []PodInfo, componentFilter string) [
 		return pods
 	}
 
-	log.Printf("Filtering pods by component name(s): %s", componentFilter)
+	slog.Info("filtering pods by component", "filter", componentFilter)
 	filterComponents := strings.Split(componentFilter, ",")
 	filterSet := make(map[string]struct{})
 	for _, comp := range filterComponents {
@@ -139,14 +139,14 @@ func (c *Client) FilterPodsByComponent(pods []PodInfo, componentFilter string) [
 	for _, pod := range pods {
 		component, err := c.GetOpenshiftComponentFromImage(pod.Image)
 		if err != nil {
-			log.Printf("Warning: could not get component for image %s: %v", pod.Image, err)
+			slog.Warn("could not get component for image", "image", pod.Image, "error", err)
 			continue
 		}
 		if _, ok := filterSet[component.Component]; ok {
 			filtered = append(filtered, pod)
 		}
 	}
-	log.Printf("Filtered pods: %d remaining out of %d", len(filtered), len(pods))
+	slog.Info("filtered pods by component", "remaining", len(filtered), "total", len(pods))
 	return filtered
 }
 
@@ -155,7 +155,7 @@ func FilterPodsByNamespace(pods []PodInfo, namespaceFilter string) []PodInfo {
 		return pods
 	}
 
-	log.Printf("Filtering pods by namespace(s): %s", namespaceFilter)
+	slog.Info("filtering pods by namespace", "filter", namespaceFilter)
 	filterNamespaces := strings.Split(namespaceFilter, ",")
 	filterSet := make(map[string]struct{})
 	for _, ns := range filterNamespaces {
@@ -168,6 +168,6 @@ func FilterPodsByNamespace(pods []PodInfo, namespaceFilter string) []PodInfo {
 			filtered = append(filtered, pod)
 		}
 	}
-	log.Printf("Filtered pods by namespace: %d remaining out of %d", len(filtered), len(pods))
+	slog.Info("filtered pods by namespace", "remaining", len(filtered), "total", len(pods))
 	return filtered
 }

@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -70,10 +70,32 @@ func run(args []string) (exitCode int) {
 	pqcCheck := fs.Bool("pqc-check", false, "Quick check for TLS 1.3 and ML-KEM (post-quantum) support only")
 	timingFile := fs.String("timing-file", "", "Output timing report to specified file in artifact-dir")
 	showVersion := fs.Bool("version", false, "Print version and exit")
+	logLevel := fs.String("log-level", "info", "Log level: debug, info, warn, error")
 
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(*logLevel)); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: invalid log level %q (valid: debug, info, warn, error)\n", *logLevel)
+		return 2
+	}
+	logOutput := os.Stderr
+	if *logFile != "" {
+		f, err := os.OpenFile(*logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: opening log file: %v\n", err)
+			return 1
+		}
+		defer func() {
+			if cerr := f.Close(); cerr != nil {
+				slog.Warn("failed to close log file", "error", cerr)
+			}
+		}()
+		logOutput = f
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(logOutput, &slog.HandlerOptions{Level: level})))
 
 	if *showVersion {
 		fmt.Printf("tls-scanner %s (commit: %s)\n", version, commit)
@@ -84,62 +106,50 @@ func run(args []string) (exitCode int) {
 
 	if *generateTemplate != "" {
 		if err := scanner.GenerateTemplate(*generateTemplate); err != nil {
-			log.Printf("Error writing template: %v", err)
+			slog.Error("writing template", "error", err)
 			return 1
 		}
 		fmt.Printf("Template written to %s\n", *generateTemplate)
 		return 0
 	}
 
-	policy := scanner.Policy()
+	policy, err := scanner.Policy()
+	if err != nil {
+		slog.Error("loading policy", "error", err)
+		return 1
+	}
 
 	defer func() {
 		if *timingFile != "" {
 			path := filepath.Join(*artifactDir, *timingFile)
 			if err := timing.Timings.WriteReport(path); err != nil {
-				log.Printf("Warning: Could not write timing report: %v", err)
+				slog.Warn("could not write timing report", "error", err)
 			} else {
-				log.Printf("Timing report written to %s", path)
+				slog.Info("timing report written", "path", path)
 			}
 		}
 	}()
 
-	if *logFile != "" {
-		f, err := os.OpenFile(*logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
-		if err != nil {
-			log.Printf("error opening file: %v", err)
-			return 1
-		}
-		defer func() {
-			if cerr := f.Close(); cerr != nil {
-				log.Printf("Warning: failed to close log file: %v", cerr)
-			}
-		}()
-		log.SetOutput(f)
-		log.Printf("Logging to file: %s", *logFile)
-	}
-
 	if !scanner.IsTestSSLInstalled() {
-		log.Print("Error: testssl.sh is not installed or not in the system's PATH.")
+		slog.Error("testssl.sh is not installed or not in the system's PATH")
 		return 1
 	}
 
 	if *concurrentScans == 0 {
 		*concurrentScans = runtime.NumCPU()
-		log.Printf("Concurrency: %d (from CPU count)", *concurrentScans)
+		slog.Info("concurrency set from CPU count", "workers", *concurrentScans)
 	} else if *concurrentScans < 0 {
-		log.Print("Error: Number of concurrent scans must be >= 0 (0 = auto)")
+		slog.Error("number of concurrent scans must be >= 0 (0 = auto)")
 		return 1
 	}
 
 	var client *k8s.Client
-	var err error
 	var pods []k8s.PodInfo
 
 	if *targets != "" {
 		targetList := strings.Split(*targets, ",")
 		if len(targetList) == 0 || (len(targetList) == 1 && targetList[0] == "") {
-			log.Print("Error: --targets flag provided but no targets were specified")
+			slog.Error("--targets flag provided but no targets were specified")
 			return 1
 		}
 
@@ -147,14 +157,14 @@ func run(args []string) (exitCode int) {
 		for _, t := range targetList {
 			hostValue, portValue, err := parseTarget(t)
 			if err != nil {
-				log.Printf("Warning: Skipping invalid target format: %s (expected host:port)", t)
+				slog.Warn("skipping invalid target format", "target", t, "expected", "host:port")
 				continue
 			}
 			jobs = append(jobs, scanner.ScanJob{IP: hostValue, Port: portValue})
 		}
 
 		if len(jobs) == 0 {
-			log.Print("Error: No valid targets found in --targets flag")
+			slog.Error("no valid targets found in --targets flag")
 			return 1
 		}
 
@@ -162,7 +172,7 @@ func run(args []string) (exitCode int) {
 		finalScanResults = &scanResults
 
 		if err := output.WriteOutputFiles(scanResults, *artifactDir, *jsonFile, *csvFile, *junitFile, isPQCCheck); err != nil {
-			log.Printf("Error writing output files: %v", err)
+			slog.Error("writing output files", "error", err)
 			return 1
 		}
 		if isPQCCheck {
@@ -177,7 +187,7 @@ func run(args []string) (exitCode int) {
 	if *templateFile != "" {
 		jobs, err := scanner.LoadTemplate(*templateFile)
 		if err != nil {
-			log.Printf("Error loading template: %v", err)
+			slog.Error("loading template", "error", err)
 			return 1
 		}
 
@@ -185,7 +195,7 @@ func run(args []string) (exitCode int) {
 		finalScanResults = &scanResults
 
 		if err := output.WriteOutputFiles(scanResults, *artifactDir, *jsonFile, *csvFile, *junitFile, isPQCCheck); err != nil {
-			log.Printf("Error writing output files: %v", err)
+			slog.Error("writing output files", "error", err)
 			return 1
 		}
 		if isPQCCheck {
@@ -200,24 +210,24 @@ func run(args []string) (exitCode int) {
 	if *allPods {
 		client, err = k8s.NewClient()
 		if err != nil {
-			log.Printf("Could not create kubernetes client for --all-pods: %v", err)
+			slog.Error("could not create kubernetes client for --all-pods", "error", err)
 			return 1
 		}
 
 		pods, err = client.GetAllPodsInfo()
 		if err != nil {
-			log.Printf("Error listing pods: %v", err)
+			slog.Error("listing pods", "error", err)
 			return 1
 		}
 		pods = client.FilterPodsByComponent(pods, *componentFilter)
 		pods = k8s.FilterPodsByNamespace(pods, *namespaceFilter)
 
 		if len(pods) == 0 {
-			log.Print("Warning: no pods found matching the given filters, nothing to scan")
+			slog.Warn("no pods found matching the given filters, nothing to scan")
 			return 0
 		}
 
-		log.Printf("Found %d pods to scan from the cluster.", len(pods))
+		slog.Info("pods to scan", "count", len(pods))
 
 		if *limitIPs > 0 {
 			totalIPs := 0
@@ -226,13 +236,13 @@ func run(args []string) (exitCode int) {
 			}
 
 			if totalIPs > *limitIPs {
-				log.Printf("Limiting scan to %d IPs (found %d total IPs)", *limitIPs, totalIPs)
+				slog.Info("limiting scan", "limit", *limitIPs, "found", totalIPs)
 				pods = scanner.LimitPodsToIPCount(pods, *limitIPs)
 				limitedTotal := 0
 				for _, pod := range pods {
 					limitedTotal += len(pod.IPs)
 				}
-				log.Printf("After limiting: %d pods with %d total IPs", len(pods), limitedTotal)
+				slog.Info("after limiting", "pods", len(pods), "ips", limitedTotal)
 			}
 		}
 	}
@@ -242,7 +252,7 @@ func run(args []string) (exitCode int) {
 		finalScanResults = &scanResults
 
 		if err := output.WriteOutputFiles(scanResults, *artifactDir, *jsonFile, *csvFile, *junitFile, isPQCCheck); err != nil {
-			log.Printf("Error writing output files: %v", err)
+			slog.Error("writing output files", "error", err)
 			return 1
 		}
 		if isPQCCheck {
@@ -256,7 +266,7 @@ func run(args []string) (exitCode int) {
 
 	portNum, err := strconv.Atoi(*port)
 	if err != nil {
-		log.Printf("Invalid port: %s", *port)
+		slog.Error("invalid port", "port", *port)
 		return 1
 	}
 
@@ -265,7 +275,7 @@ func run(args []string) (exitCode int) {
 	finalScanResults = &scanResults
 
 	if err := output.WriteOutputFiles(scanResults, *artifactDir, *jsonFile, *csvFile, *junitFile, isPQCCheck); err != nil {
-		log.Printf("Error writing output files: %v", err)
+		slog.Error("writing output files", "error", err)
 		return 1
 	}
 	if isPQCCheck {

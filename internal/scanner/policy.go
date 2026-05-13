@@ -3,7 +3,7 @@ package scanner
 import (
 	_ "embed"
 	"fmt"
-	"log"
+	"log/slog"
 	"regexp"
 
 	"gopkg.in/yaml.v3"
@@ -53,19 +53,18 @@ type ComponentPolicy struct {
 // Policy returns the org-wide component policy embedded in the binary.
 // It is the single source of truth for which TLS profile applies to each
 // component type. To change the policy, edit policy.yaml and submit for review.
-func Policy() *ComponentPolicy {
+func Policy() (*ComponentPolicy, error) {
 	var p ComponentPolicy
 	if err := yaml.Unmarshal(embeddedPolicyYAML, &p); err != nil {
-		// policy.yaml is checked into source; a parse failure is a programming error.
-		panic(fmt.Sprintf("failed to parse embedded policy: %v", err))
+		return nil, fmt.Errorf("failed to parse embedded policy: %w", err)
 	}
 	for i := range p.Rules {
 		if err := p.Rules[i].compile(); err != nil {
-			panic(fmt.Sprintf("policy rule %d: %v", i, err))
+			return nil, fmt.Errorf("policy rule %d: %w", i, err)
 		}
 	}
 	p.warnShadowedRules()
-	return &p
+	return &p, nil
 }
 
 // warnShadowedRules logs a warning for each rule that can never be reached
@@ -74,11 +73,9 @@ func (p *ComponentPolicy) warnShadowedRules() {
 	for i := 0; i < len(p.Rules); i++ {
 		for j := i + 1; j < len(p.Rules); j++ {
 			if p.Rules[i].shadows(&p.Rules[j]) {
-				log.Printf("Warning: policy rule %d (%s) shadows rule %d (%s) — rule %d will never be reached. "+
-					"Check policy.yaml and move more-specific rules before broader ones.",
-					i, p.Rules[i].description(),
-					j, p.Rules[j].description(),
-					j)
+				slog.Warn("policy rule shadows another rule, check policy.yaml and move more-specific rules before broader ones",
+					"shadowingRule", i, "shadowingDesc", p.Rules[i].description(),
+					"shadowedRule", j, "shadowedDesc", p.Rules[j].description())
 			}
 		}
 	}

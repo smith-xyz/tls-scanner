@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"strconv"
 	"strings"
@@ -20,7 +20,7 @@ import (
 const procStateListen = "0A"
 
 func DiscoverPortsFromPodSpec(pod *v1.Pod) ([]int, error) {
-	log.Printf("Discovering ports for pod %s/%s from API server...", pod.Namespace, pod.Name)
+	slog.Debug("discovering ports from API server", "namespace", pod.Namespace, "pod", pod.Name)
 
 	var ports []int
 	for _, container := range pod.Spec.Containers {
@@ -40,9 +40,9 @@ func DiscoverPortsFromPodSpec(pod *v1.Pod) ([]int, error) {
 	}
 
 	if len(ports) == 0 {
-		log.Printf("Found 0 declared TCP ports for pod %s/%s.", pod.Namespace, pod.Name)
+		slog.Debug("no declared TCP ports found", "namespace", pod.Namespace, "pod", pod.Name)
 	} else {
-		log.Printf("Found %d declared TCP ports for pod %s/%s: %v", len(ports), pod.Namespace, pod.Name, ports)
+		slog.Debug("declared TCP ports found", "namespace", pod.Namespace, "pod", pod.Name, "count", len(ports), "ports", ports)
 	}
 
 	return ports, nil
@@ -119,7 +119,7 @@ func (c *Client) DiscoverPortsFromProc(pod PodInfo) ([]int, error) {
 	for port := range addrMap {
 		ports = append(ports, port)
 	}
-	log.Printf("Discovered %d listening ports from /proc/net/tcp in pod %s/%s: %v", len(ports), pod.Namespace, pod.Name, ports)
+	slog.Debug("discovered listening ports from /proc/net/tcp", "namespace", pod.Namespace, "pod", pod.Name, "count", len(ports), "ports", ports)
 	return ports, nil
 }
 

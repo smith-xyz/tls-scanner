@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -24,7 +24,7 @@ func (c *Client) GetProcessMapForPod(pod PodInfo) (map[string]map[int]string, ma
 
 	command := []string{"/bin/sh", "-c", "lsof -i -sTCP:LISTEN -P -n -F cn"}
 	containerName := pod.Containers[0]
-	log.Printf("Executing lsof command in pod %s/%s, container %s: %v", pod.Namespace, pod.Name, containerName, command)
+	slog.Debug("executing lsof command", "namespace", pod.Namespace, "pod", pod.Name, "container", containerName, "command", command)
 
 	req := c.clientset.CoreV1().RESTClient().Post().
 		Resource("pods").
@@ -55,9 +55,9 @@ func (c *Client) GetProcessMapForPod(pod PodInfo) (map[string]map[int]string, ma
 		Stderr: &stderr,
 	})
 
-	log.Printf("lsof command for pod %s/%s finished.", pod.Namespace, pod.Name)
-	log.Printf("lsof stdout:\n%s", stdout.String())
-	log.Printf("lsof stderr:\n%s", stderr.String())
+	slog.Debug("lsof command finished", "namespace", pod.Namespace, "pod", pod.Name)
+	slog.Debug("lsof stdout", "output", stdout.String())
+	slog.Debug("lsof stderr", "output", stderr.String())
 
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
@@ -67,14 +67,14 @@ func (c *Client) GetProcessMapForPod(pod PodInfo) (map[string]map[int]string, ma
 	}
 
 	if stdout.Len() == 0 {
-		log.Printf("lsof command returned empty stdout for pod %s/%s.", pod.Namespace, pod.Name)
+		slog.Debug("lsof returned empty stdout", "namespace", pod.Namespace, "pod", pod.Name)
 	}
 
 	scanner := bufio.NewScanner(&stdout)
 	var currentProcess string
 	for scanner.Scan() {
 		line := scanner.Text()
-		log.Printf("Parsing lsof output line for pod %s/%s: %q", pod.Namespace, pod.Name, line)
+		slog.Debug("parsing lsof output line", "namespace", pod.Namespace, "pod", pod.Name, "line", line)
 		if len(line) > 1 {
 			fieldType := line[0]
 			fieldValue := line[1:]
@@ -102,13 +102,13 @@ func (c *Client) GetProcessMapForPod(pod PodInfo) (map[string]map[int]string, ma
 								ListenAddress: listenAddr,
 								ProcessName:   currentProcess,
 							}
-							log.Printf("Mapped pod %s/%s IP %s port %d to process %s (listen addr: %s)", pod.Namespace, pod.Name, ip, port, currentProcess, listenAddr)
+							slog.Debug("mapped port to process", "namespace", pod.Namespace, "pod", pod.Name, "ip", ip, "port", port, "process", currentProcess, "listenAddr", listenAddr)
 						}
 					} else {
-						log.Printf("Error converting port to integer for pod %s/%s: '%s' from line '%s'", pod.Namespace, pod.Name, portStr, line)
+						slog.Error("converting port to integer", "namespace", pod.Namespace, "pod", pod.Name, "portStr", portStr, "line", line)
 					}
 				} else {
-					log.Printf("Unexpected format for network address from lsof for pod %s/%s: '%s'", pod.Namespace, pod.Name, fieldValue)
+					slog.Warn("unexpected lsof network address format", "namespace", pod.Namespace, "pod", pod.Name, "address", fieldValue)
 				}
 			}
 		}
@@ -128,7 +128,7 @@ func (c *Client) GetAndCachePodProcesses(pod PodInfo) map[string]map[int]string 
 
 	processMap, listenInfoMap, err := c.GetProcessMapForPod(pod)
 	if err != nil {
-		log.Printf("Could not get process map for pod %s/%s: %v", pod.Namespace, pod.Name, err)
+		slog.Warn("could not get process map for pod", "namespace", pod.Namespace, "pod", pod.Name, "error", err)
 		return nil
 	}
 

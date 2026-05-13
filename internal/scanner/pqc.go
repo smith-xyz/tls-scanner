@@ -1,7 +1,7 @@
 package scanner
 
 import (
-	"log"
+	"log/slog"
 	"slices"
 )
 
@@ -90,12 +90,12 @@ func HasPQCComplianceFailures(results ScanResults, skip PortFilter) bool {
 			}
 
 			if !portResult.TLS13Supported {
-				log.Printf("PQC compliance failure: %s:%d - TLS 1.3 not supported", ipResult.IP, portResult.Port)
+				slog.Warn("PQC compliance failure: TLS 1.3 not supported", "ip", ipResult.IP, "port", portResult.Port)
 				return true
 			}
 
 			if !portResult.MLKEMSupported {
-				log.Printf("PQC compliance failure: %s:%d - ML-KEM not supported", ipResult.IP, portResult.Port)
+				slog.Warn("PQC compliance failure: ML-KEM not supported", "ip", ipResult.IP, "port", portResult.Port)
 				return true
 			}
 
