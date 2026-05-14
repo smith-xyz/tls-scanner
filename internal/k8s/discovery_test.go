@@ -178,6 +178,96 @@ func TestParseProcNetTCP(t *testing.T) {
 		})
 	}
 }
+func TestDiscoverPortsFromPodSpec(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		pod  *v1.Pod
+		want []int
+	}{
+		{
+			name: "TCP ports from containers",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "ns"},
+				Spec: v1.PodSpec{Containers: []v1.Container{{
+					Name: "c",
+					Ports: []v1.ContainerPort{
+						{ContainerPort: 443, Protocol: v1.ProtocolTCP},
+						{ContainerPort: 8443, Protocol: v1.ProtocolTCP},
+					},
+				}}},
+			},
+			want: []int{443, 8443},
+		},
+		{
+			name: "UDP ports excluded",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "ns"},
+				Spec: v1.PodSpec{Containers: []v1.Container{{
+					Name: "c",
+					Ports: []v1.ContainerPort{
+						{ContainerPort: 443, Protocol: v1.ProtocolTCP},
+						{ContainerPort: 53, Protocol: v1.ProtocolUDP},
+					},
+				}}},
+			},
+			want: []int{443},
+		},
+		{
+			name: "init container ports included",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "ns"},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{{
+						Name:  "main",
+						Ports: []v1.ContainerPort{{ContainerPort: 443, Protocol: v1.ProtocolTCP}},
+					}},
+					InitContainers: []v1.Container{{
+						Name:  "init",
+						Ports: []v1.ContainerPort{{ContainerPort: 9090, Protocol: v1.ProtocolTCP}},
+					}},
+				},
+			},
+			want: []int{443, 9090},
+		},
+		{
+			name: "no ports",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "ns"},
+				Spec:       v1.PodSpec{Containers: []v1.Container{{Name: "c"}}},
+			},
+			want: nil,
+		},
+		{
+			name: "multiple containers",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: "ns"},
+				Spec: v1.PodSpec{Containers: []v1.Container{
+					{Name: "c1", Ports: []v1.ContainerPort{{ContainerPort: 443, Protocol: v1.ProtocolTCP}}},
+					{Name: "c2", Ports: []v1.ContainerPort{{ContainerPort: 8443, Protocol: v1.ProtocolTCP}}},
+				}},
+			},
+			want: []int{443, 8443},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := DiscoverPortsFromPodSpec(tt.pod)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			sort.Ints(got)
+			sort.Ints(tt.want)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("DiscoverPortsFromPodSpec() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func intPort(n int) intstr.IntOrString     { return intstr.FromInt(n) }
 func namedPort(s string) intstr.IntOrString { return intstr.FromString(s) }
 

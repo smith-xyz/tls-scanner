@@ -103,6 +103,57 @@ func TestIsLocalhostOnly_ipv6Localhost(t *testing.T) {
 	}
 }
 
+func TestGetListenInfo(t *testing.T) {
+	t.Parallel()
+
+	c := newTestClient()
+	c.listenInfoMap["10.0.0.1"] = map[int]ListenInfo{
+		443: {Port: 443, ListenAddress: "0.0.0.0", ProcessName: "nginx"},
+	}
+
+	info, ok := c.GetListenInfo("10.0.0.1", 443)
+	if !ok {
+		t.Fatal("expected ok=true for known port")
+	}
+	if info.ListenAddress != "0.0.0.0" {
+		t.Errorf("ListenAddress = %q, want %q", info.ListenAddress, "0.0.0.0")
+	}
+
+	_, ok = c.GetListenInfo("10.0.0.1", 9999)
+	if ok {
+		t.Error("expected ok=false for unknown port")
+	}
+
+	_, ok = c.GetListenInfo("10.0.0.2", 443)
+	if ok {
+		t.Error("expected ok=false for unknown IP")
+	}
+}
+
+func TestGetProcessName(t *testing.T) {
+	t.Parallel()
+
+	c := newTestClient()
+	c.processNameMap["10.0.0.1"] = map[int]string{
+		443: "nginx",
+	}
+
+	name, ok := c.GetProcessName("10.0.0.1", 443)
+	if !ok || name != "nginx" {
+		t.Errorf("GetProcessName() = (%q, %v), want (%q, true)", name, ok, "nginx")
+	}
+
+	_, ok = c.GetProcessName("10.0.0.1", 9999)
+	if ok {
+		t.Error("expected ok=false for unknown port")
+	}
+
+	_, ok = c.GetProcessName("10.0.0.2", 443)
+	if ok {
+		t.Error("expected ok=false for unknown IP")
+	}
+}
+
 func TestIsLocalhostAddr(t *testing.T) {
 	tests := []struct {
 		addr string
