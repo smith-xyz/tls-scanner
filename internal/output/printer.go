@@ -93,12 +93,12 @@ func PrintParsedResults(results scanner.ScanResults) {
 				for _, version := range portResult.TlsVersions {
 					fmt.Printf("|   %s:\n", version)
 				}
-			if len(portResult.TlsCiphers) > 0 {
-				fmt.Printf("|   ciphers:\n")
-				for _, cipher := range portResult.TlsCiphers {
-					fmt.Printf("|     %s\n", cipher)
+				if len(portResult.TlsCiphers) > 0 {
+					fmt.Printf("|   ciphers:\n")
+					for _, cipher := range portResult.TlsCiphers {
+						fmt.Printf("|     %s\n", cipher)
+					}
 				}
-			}
 			}
 		}
 	}

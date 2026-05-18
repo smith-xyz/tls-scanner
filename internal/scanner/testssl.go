@@ -18,7 +18,7 @@ func IsTestSSLInstalled() bool {
 }
 
 func ParseTestSSLOutput(jsonData []byte, host, port string) ScanRun {
-	var rawData []map[string]interface{}
+	var rawData []map[string]any
 
 	if err := json.Unmarshal(jsonData, &rawData); err != nil {
 		slog.Error("parsing testssl.sh JSON output", "error", err)
@@ -35,7 +35,7 @@ func ParseTestSSLOutput(jsonData []byte, host, port string) ScanRun {
 	return convertTestSSLToScanRun(rawData, host, port)
 }
 
-func convertTestSSLToScanRun(rawData []map[string]interface{}, host, port string) ScanRun {
+func convertTestSSLToScanRun(rawData []map[string]any, _, port string) ScanRun {
 	scanResult := ScanRun{
 		Hosts: []Host{{
 			Status: Status{State: "up"},
@@ -169,7 +169,7 @@ func extractTLSVersion(id string) string {
 	}
 }
 
-func extractTLSVersionFromCipherID(id string, finding map[string]interface{}) string {
+func extractTLSVersionFromCipherID(id string, finding map[string]any) string {
 	if strings.Contains(id, "tls1_3") {
 		return "TLSv1.3"
 	}
@@ -220,7 +220,7 @@ func mapSeverityToStrength(severity string) string {
 }
 
 func ExtractKeyExchangeFromTestSSL(jsonData []byte) *KeyExchangeInfo {
-	var rawData []map[string]interface{}
+	var rawData []map[string]any
 	if err := json.Unmarshal(jsonData, &rawData); err != nil {
 		slog.Error("parsing testssl.sh JSON for key exchange", "error", err)
 		return nil
@@ -318,13 +318,13 @@ func IsKEMGroup(name string) bool {
 		strings.Contains(lower, "hqc")
 }
 
-func GroupTestSSLOutputByPort(jsonData []byte) (map[string][]map[string]interface{}, error) {
-	var rawData []map[string]interface{}
+func GroupTestSSLOutputByPort(jsonData []byte) (map[string][]map[string]any, error) {
+	var rawData []map[string]any
 	if err := json.Unmarshal(jsonData, &rawData); err != nil {
 		return nil, err
 	}
 
-	grouped := make(map[string][]map[string]interface{})
+	grouped := make(map[string][]map[string]any)
 	for _, finding := range rawData {
 		port, _ := finding["port"].(string)
 		if port == "" {
@@ -352,13 +352,13 @@ func ParseTestSSLOutputFromFile(filename, host, port string) ScanRun {
 	return ParseTestSSLOutput(data, host, port)
 }
 
-func GroupTestSSLOutputByIPPort(jsonData []byte) (map[string][]map[string]interface{}, error) {
-	var rawData []map[string]interface{}
+func GroupTestSSLOutputByIPPort(jsonData []byte) (map[string][]map[string]any, error) {
+	var rawData []map[string]any
 	if err := json.Unmarshal(jsonData, &rawData); err != nil {
 		return nil, err
 	}
 
-	grouped := make(map[string][]map[string]interface{})
+	grouped := make(map[string][]map[string]any)
 	for _, finding := range rawData {
 		ip, _ := finding["ip"].(string)
 		port, _ := finding["port"].(string)
@@ -380,7 +380,7 @@ func GroupTestSSLOutputByIPPort(jsonData []byte) (map[string][]map[string]interf
 // reports forward-secrecy ciphers), this captures every cipher the server
 // offers, including static RSA key-exchange suites.
 func ExtractCiphersFromTestSSL(jsonData []byte) []string {
-	var rawData []map[string]interface{}
+	var rawData []map[string]any
 	if err := json.Unmarshal(jsonData, &rawData); err != nil {
 		slog.Error("parsing testssl.sh JSON for ciphers", "error", err)
 		return nil

@@ -63,11 +63,11 @@ type KubeletTLSProfile struct {
 }
 
 type Client struct {
-	clientset                 *kubernetes.Clientset
-	restCfg                   *rest.Config
-	dynamicClient             dynamic.Interface
-	processNameMap            map[string]map[int]string
-	listenInfoMap             map[string]map[int]ListenInfo
+	clientset      *kubernetes.Clientset
+	restCfg        *rest.Config
+	dynamicClient  dynamic.Interface
+	processNameMap map[string]map[int]string
+	listenInfoMap  map[string]map[int]ListenInfo
 	// procListenAddrMap holds the decoded listen address for every port seen in
 	// /proc/net/tcp(6). It covers all containers in a pod (shared network
 	// namespace) and is used by IsLocalhostOnly as a fallback when lsof data is

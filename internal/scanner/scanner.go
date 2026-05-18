@@ -72,48 +72,48 @@ func DiscoverTargets(pods []k8s.PodInfo, concurrentScans int, client *k8s.Client
 					component, _ = client.GetOpenshiftComponentFromImage(pod.Image)
 				}
 
-			specPorts, _ := k8s.DiscoverPortsFromPodSpec(pod.Pod)
-			var procPorts []int
-			procAvailable := false
-			if client != nil {
-				var err error
-				procPorts, err = client.DiscoverPortsFromProc(pod)
-				if err != nil {
-					slog.Warn("/proc port discovery failed", "namespace", pod.Namespace, "pod", pod.Name, "error", err)
-				} else {
-					procAvailable = true
+				specPorts, _ := k8s.DiscoverPortsFromPodSpec(pod.Pod)
+				var procPorts []int
+				procAvailable := false
+				if client != nil {
+					var err error
+					procPorts, err = client.DiscoverPortsFromProc(pod)
+					if err != nil {
+						slog.Warn("/proc port discovery failed", "namespace", pod.Namespace, "pod", pod.Name, "error", err)
+					} else {
+						procAvailable = true
+					}
 				}
-			}
 
-			var processMap map[string]map[int]string
-			if client != nil && len(pod.Containers) > 0 {
-				processMap = client.GetAndCachePodProcesses(pod)
-			}
+				var processMap map[string]map[int]string
+				if client != nil && len(pod.Containers) > 0 {
+					processMap = client.GetAndCachePodProcesses(pod)
+				}
 
-			if pod.Pod.Spec.HostNetwork && processMap != nil && len(procPorts) > 0 {
-				procPorts = filterByProcessPorts(processMap, procPorts)
-			}
+				if pod.Pod.Spec.HostNetwork && processMap != nil && len(procPorts) > 0 {
+					procPorts = filterByProcessPorts(processMap, procPorts)
+				}
 
-			// When /proc data is available use it as the ground truth — only
-			// ports with an active listener are included. Fall back to
-			// spec-declared ports only when proc discovery is unavailable or
-			// failed, to avoid false positives from containerPorts that are
-			// declared but never actually bound.
-			var openPorts []int
-			if procAvailable {
-				openPorts = procPorts
-			} else {
-				openPorts = specPorts
-			}
+				// When /proc data is available use it as the ground truth — only
+				// ports with an active listener are included. Fall back to
+				// spec-declared ports only when proc discovery is unavailable or
+				// failed, to avoid false positives from containerPorts that are
+				// declared but never actually bound.
+				var openPorts []int
+				if procAvailable {
+					openPorts = procPorts
+				} else {
+					openPorts = specPorts
+				}
 
-			// Identify plaintext probe ports up front so we can skip them below.
-			probePorts := k8s.GetPlaintextProbePorts(pod.Pod)
+				// Identify plaintext probe ports up front so we can skip them below.
+				probePorts := k8s.GetPlaintextProbePorts(pod.Pod)
 
-			slog.Debug("discovery result",
-				"worker", workerID, "namespace", pod.Namespace, "pod", pod.Name,
-				"hostNetwork", pod.Pod.Spec.HostNetwork, "specPorts", specPorts,
-				"procPorts", procPorts, "openPorts", openPorts,
-				"probePorts", probePorts, "portCount", len(openPorts))
+				slog.Debug("discovery result",
+					"worker", workerID, "namespace", pod.Namespace, "pod", pod.Name,
+					"hostNetwork", pod.Pod.Spec.HostNetwork, "specPorts", specPorts,
+					"procPorts", procPorts, "openPorts", openPorts,
+					"probePorts", probePorts, "portCount", len(openPorts))
 
 				for _, ip := range pod.IPs {
 					if len(openPorts) == 0 {

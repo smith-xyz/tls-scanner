@@ -60,9 +60,9 @@ func TestExtractAPIServerTLSPredefinedProfiles(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
+		name        string
 		profileType configv1.TLSProfileType
-		wantType   string
+		wantType    string
 	}{
 		{"Old", configv1.TLSProfileOldType, "Old"},
 		{"Intermediate", configv1.TLSProfileIntermediateType, "Intermediate"},

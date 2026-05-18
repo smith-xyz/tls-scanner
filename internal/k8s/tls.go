@@ -71,8 +71,8 @@ func (c *Client) getIngressControllerTLS(fallback *APIServerTLSProfile) (*Ingres
 
 	profile.Type = string(ingress.Spec.TLSSecurityProfile.Type)
 	if custom := ingress.Spec.TLSSecurityProfile.Custom; custom != nil {
-		profile.Ciphers = custom.TLSProfileSpec.Ciphers
-		profile.MinTLSVersion = string(custom.TLSProfileSpec.MinTLSVersion)
+		profile.Ciphers = custom.Ciphers
+		profile.MinTLSVersion = string(custom.MinTLSVersion)
 		return profile, nil
 	}
 	if ingress.Spec.TLSSecurityProfile.Type == configv1.TLSProfileOldType {
@@ -103,8 +103,8 @@ func extractAPIServerTLS(apiserver *configv1.APIServer) *APIServerTLSProfile {
 
 	profile.Type = string(apiserver.Spec.TLSSecurityProfile.Type)
 	if custom := apiserver.Spec.TLSSecurityProfile.Custom; custom != nil {
-		profile.Ciphers = custom.TLSProfileSpec.Ciphers
-		profile.MinTLSVersion = string(custom.TLSProfileSpec.MinTLSVersion)
+		profile.Ciphers = custom.Ciphers
+		profile.MinTLSVersion = string(custom.MinTLSVersion)
 	}
 	if apiserver.Spec.TLSSecurityProfile.Type == configv1.TLSProfileOldType {
 		profile.Ciphers = configv1.TLSProfiles[configv1.TLSProfileOldType].Ciphers
@@ -135,8 +135,8 @@ func (c *Client) getKubeletTLS(fallback *APIServerTLSProfile) (*KubeletTLSProfil
 
 			if tlsProfile.Type == configv1.TLSProfileCustomType {
 				if custom := tlsProfile.Custom; custom != nil {
-					profile.TLSCipherSuites = custom.TLSProfileSpec.Ciphers
-					profile.MinTLSVersion = string(custom.TLSProfileSpec.MinTLSVersion)
+					profile.TLSCipherSuites = custom.Ciphers
+					profile.MinTLSVersion = string(custom.MinTLSVersion)
 				}
 			} else if tlsProfile.Type != "" {
 				if predefined, ok := configv1.TLSProfiles[tlsProfile.Type]; ok {

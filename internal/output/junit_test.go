@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	configv1 "github.com/openshift/api/config/v1"
+
 	"github.com/openshift/tls-scanner/internal/k8s"
 	"github.com/openshift/tls-scanner/internal/scanner"
 )

@@ -20,12 +20,12 @@ func buildLargeResults(n int) scanner.ScanResults {
 		ip := fmt.Sprintf("10.128.%d.%d", i/256, i%256)
 		port := 8443 + (i % 10)
 		pr := scanner.PortResult{
-			Port:     port,
-			Protocol: "tcp",
-			State:    "open",
-			Service:  "ssl/tls",
-			Status:   scanner.StatusOK,
-			Reason:   "TLS scan successful",
+			Port:        port,
+			Protocol:    "tcp",
+			State:       "open",
+			Service:     "ssl/tls",
+			Status:      scanner.StatusOK,
+			Reason:      "TLS scan successful",
 			TlsVersions: []string{"TLSv1.2", "TLSv1.3"},
 			TlsCiphers: []string{
 				"ECDHE-RSA-AES128-GCM-SHA256",

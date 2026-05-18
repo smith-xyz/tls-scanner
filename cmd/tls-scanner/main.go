@@ -84,7 +84,7 @@ func run(args []string) (exitCode int) {
 	}
 	logOutput := os.Stderr
 	if *logFile != "" {
-		f, err := os.OpenFile(*logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+		f, err := os.OpenFile(*logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644) //nolint:gosec // G302: log file in emptyDir volume, needs to be readable by kubectl cp
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: opening log file: %v\n", err)
 			return 1

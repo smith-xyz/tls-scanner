@@ -55,12 +55,12 @@ func WriteJUnitOutput(scanResults scanner.ScanResults, filename string, pqcCheck
 			if ipResult.Pod != nil {
 				className = ipResult.Pod.Name
 			}
-			
+
 			namePrefix := "[TLS Profile] "
 			if pqcCheck {
 				namePrefix = "[PQC] "
 			}
-			
+
 			testCase := JUnitTestCase{
 				Name:      fmt.Sprintf("%s%s:%d - %s", namePrefix, ipResult.IP, portResult.Port, portResult.Service),
 				ClassName: className,

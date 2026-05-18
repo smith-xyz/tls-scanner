@@ -1,0 +1,57 @@
+version: "2"
+
+# TODO: many exclusions below exist because linting was added after the fact.
+# Follow-up PRs should fix the underlying code and remove these suppresions
+# incrementally. Track via: https://github.com/openshift/tls-scanner/issues
+
+linters:
+  default: standard
+  enable:
+    - errcheck
+    - gosec
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - unused
+
+  settings:
+    # TODO: fix unchecked Close/Flush/Remove calls and remove these exclusions
+    errcheck:
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*os.File).Close
+        - (*text/tabwriter.Writer).Flush
+        - os.Remove
+    # TODO: tighten gosec rules as code is hardened
+    gosec:
+      excludes:
+        - G104 # unhandled errors on Close/Flush/Remove -- covered by errcheck config
+        - G204 # subprocess with variable args -- testssl.sh invocation is intentional
+        - G301 # 0755 directory perms are standard
+        - G304 # file inclusion via variable -- CLI tool reads user-supplied paths
+        - G306 # 0644 file perms are fine for non-secret output
+        - G402 # TLS InsecureSkipVerify -- we're a TLS scanner
+    # TODO: enable exported-comment rule once doc comments are added
+    revive:
+      rules:
+        - name: blank-imports
+        - name: unreachable-code
+        - name: unused-parameter
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/openshift/tls-scanner
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+run:
+  timeout: 5m

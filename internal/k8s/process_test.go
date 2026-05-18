@@ -25,13 +25,13 @@ func TestIsLocalhostOnly_lsofData(t *testing.T) {
 	}
 
 	tests := []struct {
-		port      int
-		wantIs    bool
-		wantAddr  string
+		port     int
+		wantIs   bool
+		wantAddr string
 	}{
-		{9259, true, "127.0.0.1"},  // localhost in lsof data
-		{9258, false, ""},          // wildcard in lsof data
-		{9999, false, ""},          // unknown port
+		{9259, true, "127.0.0.1"}, // localhost in lsof data
+		{9258, false, ""},         // wildcard in lsof data
+		{9999, false, ""},         // unknown port
 	}
 
 	for _, tt := range tests {
@@ -58,9 +58,9 @@ func TestIsLocalhostOnly_procFallback(t *testing.T) {
 		wantIs   bool
 		wantAddr string
 	}{
-		{9260, true, "127.0.0.1"},  // localhost via proc fallback
-		{9261, false, ""},          // wildcard — not localhost
-		{9999, false, ""},          // unknown
+		{9260, true, "127.0.0.1"}, // localhost via proc fallback
+		{9261, false, ""},         // wildcard — not localhost
+		{9999, false, ""},         // unknown
 	}
 
 	for _, tt := range tests {
