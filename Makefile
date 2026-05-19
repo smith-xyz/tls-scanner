@@ -1,87 +1,109 @@
 # Makefile for tls-scanner
 
-# Binary name
-BINARY_NAME=tls-scanner
+BINARY_NAME = tls-scanner
+BUILD_DIR   = bin
 
-# Build directory
-BUILD_DIR=bin
+GOCMD   = go
+GOBUILD = $(GOCMD) build
+GOCLEAN = $(GOCMD) clean
+GOTEST  = $(GOCMD) test
+GOMOD   = $(GOCMD) mod
 
-# Go parameters
-GOCMD=go
-GOBUILD=$(GOCMD) build
-GOCLEAN=$(GOCMD) clean
-GOTEST=$(GOCMD) test
-GOGET=$(GOCMD) get
-GOMOD=$(GOCMD) mod
+GOLANGCI_LINT_VERSION = v2.12.2
 
-# Version info — injected at build time, no .git/ needed in container
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 
-# Default target
 .PHONY: all
 all: build
 
-# Build the binary
 .PHONY: build
 build:
 	mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=0 $(GOBUILD) -mod=readonly -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/tls-scanner
 
-# Clean build artifacts
 .PHONY: clean
 clean:
 	$(GOCLEAN)
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) coverage.out
 
-# Download dependencies
 .PHONY: deps
 deps:
 	$(GOMOD) download
 	$(GOMOD) tidy
 
-# Run tests (skips integration tests that hit live endpoints)
 .PHONY: test
 test:
 	$(GOTEST) -v -short ./...
 
-# Run benchmarks (parsing only, no network)
 .PHONY: bench
 bench:
 	$(GOTEST) -bench=. -benchmem -short ./internal/...
 
-# Run integration benchmarks against live TLS endpoints (requires testssl.sh)
 .PHONY: bench-integration
 bench-integration:
 	$(GOTEST) -v -run Integration -count=1 -timeout=600s ./internal/scanner/
 
-# Vet
 .PHONY: vet
 vet:
 	$(GOCMD) vet ./...
 
-# Install the binary to GOPATH/bin
+.PHONY: fmt-check
+fmt-check:
+	@test -z "$$(gofmt -l $$(find . -name '*.go' -not -path './vendor/*'))" || \
+		(echo "Run gofmt on the files above" && gofmt -l $$(find . -name '*.go' -not -path './vendor/*') && exit 1)
+
+.PHONY: lint
+lint:
+	golangci-lint run ./...
+
+.PHONY: lint-fix
+lint-fix:
+	golangci-lint run --fix ./...
+
+.PHONY: govulncheck
+govulncheck:
+	govulncheck ./...
+
+.PHONY: coverage
+coverage:
+	$(GOTEST) -short -coverprofile=coverage.out ./...
+	$(GOCMD) tool cover -func=coverage.out
+
+.PHONY: check
+check: fmt-check vet lint govulncheck test
+
+.PHONY: tools
+tools:
+	$(GOCMD) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	$(GOCMD) install golang.org/x/vuln/cmd/govulncheck@latest
+
 .PHONY: install
 install:
 	$(GOCMD) install ./cmd/tls-scanner
 
-# Run the program with default parameters
 .PHONY: run
 run: build
 	./$(BUILD_DIR)/$(BINARY_NAME)
 
-# Help target
 .PHONY: help
 help:
 	@echo "Available targets:"
-	@echo "  build        - Build the binary"
-	@echo "  clean        - Clean build artifacts"
-	@echo "  deps         - Download and tidy dependencies"
-	@echo "  test         - Run tests"
-	@echo "  bench        - Run benchmarks (parsing, no network)"
-	@echo "  bench-integ  - Run integration benchmarks (requires testssl.sh)"
-	@echo "  vet          - Run go vet"
-	@echo "  install      - Install binary to GOPATH/bin"
-	@echo "  run          - Build and run with default parameters"
-	@echo "  help         - Show this help message"
+	@echo "  build          - Build the binary"
+	@echo "  clean          - Clean build artifacts"
+	@echo "  deps           - Download and tidy dependencies"
+	@echo "  test           - Run tests (skips integration)"
+	@echo "  bench          - Run benchmarks (parsing, no network)"
+	@echo "  bench-integ    - Run integration benchmarks (requires testssl.sh)"
+	@echo "  vet            - Run go vet"
+	@echo "  fmt-check      - Verify gofmt formatting"
+	@echo "  lint           - Run golangci-lint"
+	@echo "  lint-fix            - Auto-fix lint and formatting issues"
+	@echo "  govulncheck    - Run govulncheck for known vulnerabilities"
+	@echo "  coverage       - Run tests with coverage report"
+	@echo "  check          - Run all checks (fmt, vet, lint, vulncheck, test)"
+	@echo "  tools          - Install golangci-lint and govulncheck"
+	@echo "  install        - Install binary to GOPATH/bin"
+	@echo "  run            - Build and run with default parameters"
+	@echo "  help           - Show this help message"

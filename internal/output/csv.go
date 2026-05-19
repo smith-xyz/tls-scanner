@@ -139,10 +139,10 @@ func WriteCSVOutput(results scanner.ScanResults, filename string) error {
 				"ML-KEM Supported":              boolToYesNo(portResult.MLKEMSupported),
 				"ML-KEM KEMs":                   joinOrNA(portResult.MLKEMCiphers),
 				"All KEMs":                      joinOrNA(portResult.AllKEMs),
-				"TLS 1.3 Offered":              "No",
-				"TLS 1.2 Only":                 "No",
-				"PQC Capable":                  "No",
-				"Readiness Notes":              "N/A",
+				"TLS 1.3 Offered":               "No",
+				"TLS 1.2 Only":                  "No",
+				"PQC Capable":                   "No",
+				"Readiness Notes":               "N/A",
 				"Ingress Configured Profile":    ingressProfile,
 				"Ingress Configured MinVersion": ingressMinVersion,
 				"Ingress MinVersion Compliance": "N/A",
@@ -263,4 +263,3 @@ func boolToYesNo(b bool) string {
 	}
 	return "No"
 }
-

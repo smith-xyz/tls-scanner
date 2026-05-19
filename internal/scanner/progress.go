@@ -52,7 +52,7 @@ func (p *ProgressTracker) print() {
 		elapsed, discovered, p.totalPods, queued, skipped)
 }
 
-func (p *ProgressTracker) PodDiscovered() { p.discoveredPods.Add(1) }
-func (p *ProgressTracker) PortQueued()    { p.queuedPorts.Add(1) }
-func (p *ProgressTracker) PortSkipped()   { p.skippedPorts.Add(1) }
+func (p *ProgressTracker) PodDiscovered()     { p.discoveredPods.Add(1) }
+func (p *ProgressTracker) PortQueued()        { p.queuedPorts.Add(1) }
+func (p *ProgressTracker) PortSkipped()       { p.skippedPorts.Add(1) }
 func (p *ProgressTracker) QueuedCount() int64 { return p.queuedPorts.Load() }

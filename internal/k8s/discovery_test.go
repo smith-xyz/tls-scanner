@@ -131,7 +131,7 @@ func TestParseProcNetTCP(t *testing.T) {
 			want:  nil,
 		},
 		{
-			name: "header only",
+			name:  "header only",
 			input: `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode`,
 			want:  nil,
 		},
@@ -268,7 +268,7 @@ func TestDiscoverPortsFromPodSpec(t *testing.T) {
 	}
 }
 
-func intPort(n int) intstr.IntOrString     { return intstr.FromInt(n) }
+func intPort(n int) intstr.IntOrString      { return intstr.FromInt(n) }
 func namedPort(s string) intstr.IntOrString { return intstr.FromString(s) }
 
 func httpProbe(port intstr.IntOrString) *v1.Probe {

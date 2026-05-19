@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openshift/tls-scanner/internal/k8s"
-	"github.com/openshift/tls-scanner/internal/testutil"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
 
+	"github.com/openshift/tls-scanner/internal/k8s"
+	"github.com/openshift/tls-scanner/internal/testutil"
+)
 
 func makePod(name, namespace, ip string, ports ...int32) k8s.PodInfo {
 	var containerPorts []v1.ContainerPort
@@ -176,7 +176,6 @@ func TestGetMinVersionValue(t *testing.T) {
 		t.Fatalf("expected minimum version value 11, got %d", got)
 	}
 }
-
 
 func TestStringInSlice(t *testing.T) {
 	t.Parallel()
@@ -472,7 +471,6 @@ func TestIsKEMGroup(t *testing.T) {
 		t.Fatal("expected classical group to be false")
 	}
 }
-
 
 func TestLimitPodsToIPCount(t *testing.T) {
 	t.Parallel()

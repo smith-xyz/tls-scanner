@@ -10,7 +10,6 @@ import (
 	"github.com/openshift/tls-scanner/internal/testutil"
 )
 
-
 func readJSONResults(t *testing.T, dir, file string) scanner.ScanResults {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(dir, file))
