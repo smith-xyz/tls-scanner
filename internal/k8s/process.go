@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -70,53 +71,61 @@ func (c *Client) GetProcessMapForPod(pod PodInfo) (map[string]map[int]string, ma
 		slog.Debug("lsof returned empty stdout", "namespace", pod.Namespace, "pod", pod.Name)
 	}
 
-	scanner := bufio.NewScanner(&stdout)
-	var currentProcess string
-	for scanner.Scan() {
-		line := scanner.Text()
-		slog.Debug("parsing lsof output line", "namespace", pod.Namespace, "pod", pod.Name, "line", line)
-		if len(line) > 1 {
-			fieldType := line[0]
-			fieldValue := line[1:]
+	processMap, listenInfoMap = ParseLsofOutput(stdout.String(), pod.IPs)
+	return processMap, listenInfoMap, nil
+}
 
-			switch fieldType {
-			case 'c':
-				currentProcess = fieldValue
-			case 'n':
-				parts := strings.Split(fieldValue, ":")
-				if len(parts) == 2 {
-					listenAddr := parts[0]
-					portStr := parts[1]
-					port, err := strconv.Atoi(portStr)
-					if err == nil {
-						for _, ip := range pod.IPs {
-							if _, ok := processMap[ip]; !ok {
-								processMap[ip] = make(map[int]string)
-							}
-							if _, ok := listenInfoMap[ip]; !ok {
-								listenInfoMap[ip] = make(map[int]ListenInfo)
-							}
-							processMap[ip][port] = currentProcess
-							listenInfoMap[ip][port] = ListenInfo{
-								Port:          port,
-								ListenAddress: listenAddr,
-								ProcessName:   currentProcess,
-							}
-							slog.Debug("mapped port to process", "namespace", pod.Namespace, "pod", pod.Name, "ip", ip, "port", port, "process", currentProcess, "listenAddr", listenAddr)
-						}
-					} else {
-						slog.Error("converting port to integer", "namespace", pod.Namespace, "pod", pod.Name, "portStr", portStr, "line", line)
-					}
-				} else {
-					slog.Warn("unexpected lsof network address format", "namespace", pod.Namespace, "pod", pod.Name, "address", fieldValue)
+// ParseLsofOutput parses `lsof -i -sTCP:LISTEN -P -n -F cn` output and returns
+// per-IP maps of port→process name and port→ListenInfo. Uses net.SplitHostPort
+// to correctly handle both IPv4 ("*:9099") and IPv6 ("[::]:8443") addresses.
+//
+// TODO(refactor): collapse to single ListenInfo map return; move to internal/netdiscovery
+func ParseLsofOutput(output string, ips []string) (map[string]map[int]string, map[string]map[int]ListenInfo) {
+	processMap := make(map[string]map[int]string)
+	listenInfoMap := make(map[string]map[int]ListenInfo)
+
+	sc := bufio.NewScanner(strings.NewReader(output))
+	var currentProcess string
+	for sc.Scan() {
+		line := sc.Text()
+		if len(line) < 2 {
+			continue
+		}
+		switch line[0] {
+		case 'c':
+			currentProcess = line[1:]
+		case 'n':
+			host, portStr, err := net.SplitHostPort(line[1:])
+			if err != nil {
+				slog.Warn("lsof: cannot parse address", "address", line[1:], "error", err)
+				continue
+			}
+			port, err := strconv.Atoi(portStr)
+			if err != nil {
+				slog.Error("lsof: invalid port number", "port", portStr)
+				continue
+			}
+			for _, ip := range ips {
+				if processMap[ip] == nil {
+					processMap[ip] = make(map[int]string)
+				}
+				if listenInfoMap[ip] == nil {
+					listenInfoMap[ip] = make(map[int]ListenInfo)
+				}
+				processMap[ip][port] = currentProcess
+				listenInfoMap[ip][port] = ListenInfo{
+					Port:          port,
+					ListenAddress: host,
+					ProcessName:   currentProcess,
 				}
 			}
 		}
 	}
 
-	return processMap, listenInfoMap, nil
+	return processMap, listenInfoMap
 }
 
+// TODO(refactor): return map[int]bool port set; stop caching into processNameMap
 func (c *Client) GetAndCachePodProcesses(pod PodInfo) map[string]map[int]string {
 	c.processCacheMutex.Lock()
 	if c.processDiscoveryAttempted[pod.Name] {
@@ -204,6 +213,7 @@ func (c *Client) GetListenInfo(ip string, port int) (ListenInfo, bool) {
 	return ListenInfo{}, false
 }
 
+// TODO(refactor): remove — redundant with GetListenInfo().ProcessName
 func (c *Client) GetProcessName(ip string, port int) (string, bool) {
 	c.processCacheMutex.Lock()
 	defer c.processCacheMutex.Unlock()

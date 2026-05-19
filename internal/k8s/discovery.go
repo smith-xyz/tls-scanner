@@ -123,6 +123,8 @@ func (c *Client) DiscoverPortsFromProc(pod PodInfo) ([]int, error) {
 	return ports, nil
 }
 
+// TODO(refactor): move ParseProcNetTCPWithAddrs + decodeProcNetAddr to internal/netdiscovery
+
 // ParseProcNetTCPWithAddrs parses /proc/net/tcp (and /proc/net/tcp6) output and
 // returns a map of port → decoded listen address for every socket in the LISTEN
 // state.
