@@ -224,7 +224,7 @@ func TestParseLsofOutput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotProc, gotListen := ParseLsofOutput(tt.output, tt.ips)
+			gotProc, gotListen := ParseLsofOutput(tt.output, tt.ips, "test-ns", "test-pod")
 			for ip, wantPorts := range tt.wantProcesses {
 				for port, wantName := range wantPorts {
 					if gotProc[ip][port] != wantName {

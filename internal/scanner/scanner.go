@@ -95,7 +95,11 @@ func DiscoverTargets(pods []k8s.PodInfo, concurrentScans int, client *k8s.Client
 				}
 
 				if pod.Pod.Spec.HostNetwork && processMap != nil && len(procPorts) > 0 {
-					procPorts = filterByProcessPorts(processMap, procPorts, specPorts)
+					var secondarySpecPorts []int
+					if len(pod.Containers) > 1 {
+						secondarySpecPorts = k8s.DiscoverPortsFromSecondaryContainers(pod.Pod, pod.Containers[0])
+					}
+					procPorts = filterByProcessPorts(processMap, procPorts, secondarySpecPorts)
 				}
 
 				// When /proc data is available use it as the ground truth — only

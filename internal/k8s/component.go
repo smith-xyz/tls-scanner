@@ -129,7 +129,6 @@ func (c *Client) getComponentFromClusterMetadata(image string) (*OpenshiftCompon
 	}, nil
 }
 
-
 func (c *Client) extractComponentNameFromImage(image string) string {
 	parts := strings.Split(image, "/")
 	if len(parts) > 0 {
@@ -158,11 +157,11 @@ func (c *Client) extractRegistryFromImage(image string) string {
 
 // extractComponentFromPod returns a component name for a pod based on the following order
 // of precedence:
-//   1. label named 'app' 
-//   2. label named 'component'
-//   3. label named 'app.kubernetes.io/name'
-//   4. container.Name
-//   5. name determined from container.Image 
+//  1. label named 'app'
+//  2. label named 'component'
+//  3. label named 'app.kubernetes.io/name'
+//  4. container.Name
+//  5. name determined from container.Image
 func (c *Client) extractComponentFromPod(pod v1.Pod, container v1.Container) string {
 	if component, exists := pod.Labels["app"]; exists {
 		return component

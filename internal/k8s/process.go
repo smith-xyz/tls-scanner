@@ -71,7 +71,7 @@ func (c *Client) GetProcessMapForPod(pod PodInfo) (map[string]map[int]string, ma
 		slog.Debug("lsof returned empty stdout", "namespace", pod.Namespace, "pod", pod.Name)
 	}
 
-	processMap, listenInfoMap = ParseLsofOutput(stdout.String(), pod.IPs)
+	processMap, listenInfoMap = ParseLsofOutput(stdout.String(), pod.IPs, pod.Namespace, pod.Name)
 	return processMap, listenInfoMap, nil
 }
 
@@ -80,7 +80,7 @@ func (c *Client) GetProcessMapForPod(pod PodInfo) (map[string]map[int]string, ma
 // to correctly handle both IPv4 ("*:9099") and IPv6 ("[::]:8443") addresses.
 //
 // TODO(refactor): collapse to single ListenInfo map return; move to internal/netdiscovery
-func ParseLsofOutput(output string, ips []string) (map[string]map[int]string, map[string]map[int]ListenInfo) {
+func ParseLsofOutput(output string, ips []string, namespace, podName string) (map[string]map[int]string, map[string]map[int]ListenInfo) {
 	processMap := make(map[string]map[int]string)
 	listenInfoMap := make(map[string]map[int]ListenInfo)
 
@@ -97,12 +97,12 @@ func ParseLsofOutput(output string, ips []string) (map[string]map[int]string, ma
 		case 'n':
 			host, portStr, err := net.SplitHostPort(line[1:])
 			if err != nil {
-				slog.Warn("lsof: cannot parse address", "address", line[1:], "error", err)
+				slog.Warn("lsof: cannot parse address", "namespace", namespace, "pod", podName, "address", line[1:], "error", err)
 				continue
 			}
 			port, err := strconv.Atoi(portStr)
 			if err != nil {
-				slog.Error("lsof: invalid port number", "port", portStr)
+				slog.Error("lsof: invalid port number", "namespace", namespace, "pod", podName, "port", portStr)
 				continue
 			}
 			for _, ip := range ips {

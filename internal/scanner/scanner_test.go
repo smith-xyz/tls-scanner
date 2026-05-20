@@ -729,6 +729,15 @@ func TestFilterByProcessPorts(t *testing.T) {
 			specPorts: []int{9091},
 			want:      []int{9091},
 		},
+		{
+			name: "nil specPorts — only lsof-owned ports kept",
+			processMap: map[string]map[int]string{
+				"10.0.0.1": {9091: "main"},
+			},
+			procPorts: []int{9091, 6443, 10257},
+			specPorts: nil,
+			want:      []int{9091},
+		},
 	}
 
 	for _, tt := range tests {

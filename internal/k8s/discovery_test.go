@@ -268,6 +268,77 @@ func TestDiscoverPortsFromPodSpec(t *testing.T) {
 	}
 }
 
+func TestDiscoverPortsFromSecondaryContainers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		pod           *v1.Pod
+		lsofContainer string
+		want          []int
+	}{
+		{
+			name: "single container returns nothing",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{Containers: []v1.Container{
+					{Name: "main", Ports: []v1.ContainerPort{{ContainerPort: 443, Protocol: v1.ProtocolTCP}}},
+				}},
+			},
+			lsofContainer: "main",
+			want:          nil,
+		},
+		{
+			name: "excludes lsof container ports",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{Containers: []v1.Container{
+					{Name: "main", Ports: []v1.ContainerPort{{ContainerPort: 443, Protocol: v1.ProtocolTCP}}},
+					{Name: "sidecar", Ports: []v1.ContainerPort{{ContainerPort: 8443, Protocol: v1.ProtocolTCP}}},
+				}},
+			},
+			lsofContainer: "main",
+			want:          []int{8443},
+		},
+		{
+			name: "multiple secondary containers",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{Containers: []v1.Container{
+					{Name: "main", Ports: []v1.ContainerPort{{ContainerPort: 443, Protocol: v1.ProtocolTCP}}},
+					{Name: "sidecar1", Ports: []v1.ContainerPort{{ContainerPort: 8443, Protocol: v1.ProtocolTCP}}},
+					{Name: "sidecar2", Ports: []v1.ContainerPort{{ContainerPort: 9090, Protocol: v1.ProtocolTCP}}},
+				}},
+			},
+			lsofContainer: "main",
+			want:          []int{8443, 9090},
+		},
+		{
+			name: "UDP ports excluded",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{Containers: []v1.Container{
+					{Name: "main", Ports: []v1.ContainerPort{{ContainerPort: 443, Protocol: v1.ProtocolTCP}}},
+					{Name: "sidecar", Ports: []v1.ContainerPort{
+						{ContainerPort: 8443, Protocol: v1.ProtocolTCP},
+						{ContainerPort: 53, Protocol: v1.ProtocolUDP},
+					}},
+				}},
+			},
+			lsofContainer: "main",
+			want:          []int{8443},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := DiscoverPortsFromSecondaryContainers(tt.pod, tt.lsofContainer)
+			sort.Ints(got)
+			sort.Ints(tt.want)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("DiscoverPortsFromSecondaryContainers() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func intPort(n int) intstr.IntOrString      { return intstr.FromInt(n) }
 func namedPort(s string) intstr.IntOrString { return intstr.FromString(s) }
 
