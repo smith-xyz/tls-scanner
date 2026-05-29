@@ -48,6 +48,24 @@ func DiscoverPortsFromPodSpec(pod *v1.Pod) ([]int, error) {
 	return ports, nil
 }
 
+// DiscoverPortsFromSecondaryContainers returns TCP ports from containers other than lsofContainer.
+//
+// TODO(refactor): extract shared tcpPortsFromContainers helper; drop never-used error return from DiscoverPortsFromPodSpec
+func DiscoverPortsFromSecondaryContainers(pod *v1.Pod, lsofContainer string) []int {
+	var ports []int
+	for _, container := range pod.Spec.Containers {
+		if container.Name == lsofContainer {
+			continue
+		}
+		for _, port := range container.Ports {
+			if port.Protocol == v1.ProtocolTCP {
+				ports = append(ports, int(port.ContainerPort))
+			}
+		}
+	}
+	return ports
+}
+
 func (c *Client) DiscoverPortsFromProc(pod PodInfo) ([]int, error) {
 	if len(pod.Containers) == 0 {
 		return nil, fmt.Errorf("pod %s/%s has no containers", pod.Namespace, pod.Name)
@@ -122,6 +140,8 @@ func (c *Client) DiscoverPortsFromProc(pod PodInfo) ([]int, error) {
 	slog.Debug("discovered listening ports from /proc/net/tcp", "namespace", pod.Namespace, "pod", pod.Name, "count", len(ports), "ports", ports)
 	return ports, nil
 }
+
+// TODO(refactor): move ParseProcNetTCPWithAddrs + decodeProcNetAddr to internal/netdiscovery
 
 // ParseProcNetTCPWithAddrs parses /proc/net/tcp (and /proc/net/tcp6) output and
 // returns a map of port → decoded listen address for every socket in the LISTEN

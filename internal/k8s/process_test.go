@@ -154,6 +154,100 @@ func TestGetProcessName(t *testing.T) {
 	}
 }
 
+func TestParseLsofOutput(t *testing.T) {
+	tests := []struct {
+		name          string
+		output        string
+		ips           []string
+		wantProcesses map[string]map[int]string
+		wantListen    map[string]map[int]ListenInfo
+	}{
+		{
+			name:   "ipv4 wildcard",
+			output: "p1\ncmyproc\nn*:9099\n",
+			ips:    []string{"10.0.0.1"},
+			wantProcesses: map[string]map[int]string{
+				"10.0.0.1": {9099: "myproc"},
+			},
+			wantListen: map[string]map[int]ListenInfo{
+				"10.0.0.1": {9099: {Port: 9099, ListenAddress: "*", ProcessName: "myproc"}},
+			},
+		},
+		{
+			name:   "ipv4 localhost",
+			output: "p1\ncmyproc\nn127.0.0.1:8080\n",
+			ips:    []string{"10.0.0.1"},
+			wantProcesses: map[string]map[int]string{
+				"10.0.0.1": {8080: "myproc"},
+			},
+			wantListen: map[string]map[int]ListenInfo{
+				"10.0.0.1": {8080: {Port: 8080, ListenAddress: "127.0.0.1", ProcessName: "myproc"}},
+			},
+		},
+		{
+			name:   "ipv6 wildcard bracket notation",
+			output: "p1\nckube-rbac\nn[::]:8443\n",
+			ips:    []string{"10.0.0.1"},
+			wantProcesses: map[string]map[int]string{
+				"10.0.0.1": {8443: "kube-rbac"},
+			},
+			wantListen: map[string]map[int]ListenInfo{
+				"10.0.0.1": {8443: {Port: 8443, ListenAddress: "::", ProcessName: "kube-rbac"}},
+			},
+		},
+		{
+			name:   "ipv6 localhost bracket notation",
+			output: "p1\ncmetrics\nn[::1]:9090\n",
+			ips:    []string{"10.0.0.1"},
+			wantProcesses: map[string]map[int]string{
+				"10.0.0.1": {9090: "metrics"},
+			},
+			wantListen: map[string]map[int]ListenInfo{
+				"10.0.0.1": {9090: {Port: 9090, ListenAddress: "::1", ProcessName: "metrics"}},
+			},
+		},
+		{
+			name:   "mixed ipv4 and ipv6",
+			output: "p1\ncmain\nn*:9091\np2\nckube-rbac\nn[::]:8443\n",
+			ips:    []string{"10.0.0.1"},
+			wantProcesses: map[string]map[int]string{
+				"10.0.0.1": {9091: "main", 8443: "kube-rbac"},
+			},
+			wantListen: map[string]map[int]ListenInfo{
+				"10.0.0.1": {
+					9091: {Port: 9091, ListenAddress: "*", ProcessName: "main"},
+					8443: {Port: 8443, ListenAddress: "::", ProcessName: "kube-rbac"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotProc, gotListen := ParseLsofOutput(tt.output, tt.ips, "test-ns", "test-pod")
+			for ip, wantPorts := range tt.wantProcesses {
+				for port, wantName := range wantPorts {
+					if gotProc[ip][port] != wantName {
+						t.Errorf("processMap[%s][%d] = %q, want %q", ip, port, gotProc[ip][port], wantName)
+					}
+				}
+			}
+			for ip, wantPorts := range tt.wantListen {
+				for port, wantInfo := range wantPorts {
+					gotInfo, ok := gotListen[ip][port]
+					if !ok {
+						t.Errorf("listenInfoMap missing ip=%s port=%d", ip, port)
+						continue
+					}
+					if gotInfo != wantInfo {
+						t.Errorf("listenInfoMap[%s][%d] = %+v, want %+v", ip, port, gotInfo, wantInfo)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestIsLocalhostAddr(t *testing.T) {
 	tests := []struct {
 		addr string

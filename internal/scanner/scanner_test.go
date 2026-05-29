@@ -692,6 +692,66 @@ func TestDiscoverPortsFromPodSpec(t *testing.T) {
 	}
 }
 
+func TestFilterByProcessPorts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		processMap map[string]map[int]string
+		procPorts  []int
+		specPorts  []int
+		want       []int
+	}{
+		{
+			name: "keeps lsof-mapped ports",
+			processMap: map[string]map[int]string{
+				"10.0.0.1": {9091: "main", 9043: "sidecar"},
+			},
+			procPorts: []int{9091, 9043, 6443, 10257},
+			specPorts: []int{9091, 9043},
+			want:      []int{9091, 9043},
+		},
+		{
+			name: "spec-declared port preserved when lsof misses it",
+			processMap: map[string]map[int]string{
+				"10.0.0.1": {9091: "main", 9043: "sidecar"},
+			},
+			procPorts: []int{9091, 9043, 8443, 6443, 10257},
+			specPorts: []int{9091, 9043, 8443},
+			want:      []int{9091, 9043, 8443},
+		},
+		{
+			name: "unowned port not in spec still dropped",
+			processMap: map[string]map[int]string{
+				"10.0.0.1": {9091: "main"},
+			},
+			procPorts: []int{9091, 6443, 10257},
+			specPorts: []int{9091},
+			want:      []int{9091},
+		},
+		{
+			name: "nil specPorts — only lsof-owned ports kept",
+			processMap: map[string]map[int]string{
+				"10.0.0.1": {9091: "main"},
+			},
+			procPorts: []int{9091, 6443, 10257},
+			specPorts: nil,
+			want:      []int{9091},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := filterByProcessPorts(tt.processMap, tt.procPorts, tt.specPorts)
+			slices.Sort(got)
+			slices.Sort(tt.want)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("filterByProcessPorts() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestHasPQCComplianceFailures(t *testing.T) {
 	t.Parallel()
 
