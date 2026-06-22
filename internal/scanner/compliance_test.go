@@ -8,6 +8,50 @@ import (
 	"github.com/openshift/tls-scanner/internal/k8s"
 )
 
+// TestHardcodedProfileEnforcesCompliance is the end-to-end test for the
+// --tls-profile-type flag. It proves that a profile built by
+// NewTLSSecurityProfileFromType causes HasComplianceFailures to return true
+// when a port is non-compliant — and would return false without the
+// TLSAdherence fix (the regression we guard against).
+func TestHardcodedProfileEnforcesCompliance(t *testing.T) {
+	t.Parallel()
+
+	profile, err := k8s.NewTLSSecurityProfileFromType("Intermediate")
+	if err != nil {
+		t.Fatalf("NewTLSSecurityProfileFromType: %v", err)
+	}
+
+	// A port that fails the version check: offers only TLS 1.0, but Intermediate
+	// requires >= TLS 1.2.
+	nonCompliantResult := ScanResults{
+		TLSSecurityConfig: profile,
+		IPResults: []IPResult{{
+			PortResults: []PortResult{{
+				APIServerTLSConfigCompliance: &TLSConfigComplianceResult{
+					Version: false, // TLS version too low
+					Ciphers: true,
+				},
+			}},
+		}},
+	}
+
+	if !HasComplianceFailures(nonCompliantResult) {
+		t.Error("HasComplianceFailures = false; want true — hardcoded profile must enforce compliance")
+	}
+
+	// Regression guard: same results but TLSAdherence left unset (the old broken
+	// behavior). HasComplianceFailures must return false in that case, confirming
+	// the fix is what drives enforcement.
+	brokenProfile := *profile
+	brokenProfile.TLSAdherence = configv1.TLSAdherencePolicyNoOpinion
+	withoutFix := nonCompliantResult
+	withoutFix.TLSSecurityConfig = &brokenProfile
+
+	if HasComplianceFailures(withoutFix) {
+		t.Error("regression check: HasComplianceFailures = true with NoOpinion adherence; that should not happen")
+	}
+}
+
 func intermediateProfile() *k8s.TLSSecurityProfile {
 	return &k8s.TLSSecurityProfile{
 		APIServer: &k8s.APIServerTLSProfile{

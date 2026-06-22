@@ -196,7 +196,7 @@ func run(args []string) (exitCode int) {
 			return 0
 		}
 
-		scanResults := scanner.Scan(jobs, *concurrentScans, nil, nil, policy, timeouts)
+		scanResults := scanner.Scan(jobs, *concurrentScans, nil, tlsProfileOverride, policy, timeouts)
 		finalScanResults = &scanResults
 
 		if err := output.WriteOutputFiles(scanResults, *artifactDir, *jsonFile, *csvFile, *junitFile, isPQCCheck); err != nil {
@@ -219,7 +219,7 @@ func run(args []string) (exitCode int) {
 			return 1
 		}
 
-		scanResults := scanner.Scan(jobs, *concurrentScans, nil, nil, policy, timeouts)
+		scanResults := scanner.Scan(jobs, *concurrentScans, nil, tlsProfileOverride, policy, timeouts)
 		finalScanResults = &scanResults
 
 		if err := output.WriteOutputFiles(scanResults, *artifactDir, *jsonFile, *csvFile, *junitFile, isPQCCheck); err != nil {
@@ -311,7 +311,7 @@ func run(args []string) (exitCode int) {
 		return 0
 	}
 
-	scanResults := scanner.Scan(jobs, *concurrentScans, client, nil, policy, timeouts)
+	scanResults := scanner.Scan(jobs, *concurrentScans, client, tlsProfileOverride, policy, timeouts)
 	finalScanResults = &scanResults
 
 	if err := output.WriteOutputFiles(scanResults, *artifactDir, *jsonFile, *csvFile, *junitFile, isPQCCheck); err != nil {

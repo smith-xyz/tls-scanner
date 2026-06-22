@@ -22,6 +22,24 @@ func TestNewTLSSecurityProfileFromTypeModern(t *testing.T) {
 	}
 }
 
+// TestNewTLSSecurityProfileFromTypeEnforcesCompliance verifies that a profile
+// built from a CLI-supplied type always sets TLSAdherence to
+// StrictAllComponents. Without this, HasComplianceFailures short-circuits to
+// false and compliance violations are silently swallowed.
+func TestNewTLSSecurityProfileFromTypeEnforcesCompliance(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"Old", "Intermediate", "Modern"} {
+		got, err := NewTLSSecurityProfileFromType(name)
+		if err != nil {
+			t.Fatalf("NewTLSSecurityProfileFromType(%q) error = %v", name, err)
+		}
+		if got.TLSAdherence != configv1.TLSAdherencePolicyStrictAllComponents {
+			t.Errorf("%s: TLSAdherence = %q, want StrictAllComponents", name, got.TLSAdherence)
+		}
+	}
+}
+
 func TestNewTLSSecurityProfileFromTypeInvalid(t *testing.T) {
 	t.Parallel()
 
