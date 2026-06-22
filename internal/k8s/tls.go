@@ -165,6 +165,10 @@ func (c *Client) getKubeletTLS(fallback *APIServerTLSProfile) (*KubeletTLSProfil
 // explicit override inherit the APIServer profile, matching standalone OpenShift
 // behavior. Used when the cluster APIServer CR does not reflect the effective
 // profile, such as HyperShift hosted control planes.
+//
+// TLSAdherence is set to StrictAllComponents because explicitly supplying a
+// profile on the CLI is an unambiguous opt-in to enforcement — compliance
+// failures must be reported regardless of the cluster's tlsAdherence setting.
 func NewTLSSecurityProfileFromType(profileType string) (*TLSSecurityProfile, error) {
 	var normalized configv1.TLSProfileType
 	switch strings.ToLower(strings.TrimSpace(profileType)) {
@@ -186,7 +190,8 @@ func NewTLSSecurityProfileFromType(profileType string) (*TLSSecurityProfile, err
 	}
 
 	return &TLSSecurityProfile{
-		APIServer: apiServer,
+		TLSAdherence: configv1.TLSAdherencePolicyStrictAllComponents,
+		APIServer:    apiServer,
 		IngressController: &IngressTLSProfile{
 			Type:          apiServer.Type,
 			Ciphers:       apiServer.Ciphers,
